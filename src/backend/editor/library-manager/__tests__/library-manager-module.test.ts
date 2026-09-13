@@ -251,7 +251,8 @@ describe('LibraryManagerModule', () => {
       const result = await mod.installFromFile(tmp)
       expect(result).toMatchObject({ success: true, origin: 'codesys' })
       // Mock derives the name from the file basename, sanitised.
-      if (result.success && !('canceled' in result && result.canceled)) {
+      // Not a ZIP, so not the bundle arm -- narrow it away to read `name`.
+      if (result.success && !('entries' in result) && !result.canceled) {
         expect(result.name).toBe('OSCAT')
         expect(existsSync(installedPath(librariesDir, 'OSCAT'))).toBe(true)
       }
@@ -618,6 +619,45 @@ describe('LibraryManagerModule', () => {
       // The real version is the key; the folder is only sanitised.
       expect(Object.keys(registry.libraries['node-uio'].versions).sort()).toEqual(['1.0.0', '1.0.0+sha.abc'])
       expect(mod.loadEnabledArchives([{ name: 'node-uio', version: '1.0.0+sha.abc' }]).archives).toHaveLength(1)
+    })
+
+    it('uninstalls a version whose string is not a legal path segment', async () => {
+      // Regression: uninstall built its folder from the raw version and ran it
+      // through validatePathId, so a version that installs fine as
+      // '1.0.0+sha.abc' could never be removed. The folder comes from the
+      // registry entry instead.
+      const mod = makeModule()
+      await install(mod, 'node-uio', '1.0.0')
+      const tmp = join(testRoot, 'build-meta.stlib')
+      writeFileSync(tmp, JSON.stringify(makeArchive('node-uio', '1.0.0+sha.abc')), 'utf-8')
+      await mod.installFromFile(tmp)
+
+      expect(mod.uninstall('node-uio', '1.0.0+sha.abc')).toEqual({ success: true })
+
+      const registry = JSON.parse(readFileSync(join(librariesDir, 'registry.json'), 'utf-8'))
+      expect(Object.keys(registry.libraries['node-uio'].versions)).toEqual(['1.0.0'])
+      expect(mod.listInstalled()).toEqual([expect.objectContaining({ versions: ['1.0.0'] })])
+    })
+
+    it('takes the library folder with the last version', async () => {
+      const mod = makeModule()
+      await install(mod, 'node-uio', '0.0.1')
+
+      expect(mod.uninstall('node-uio', '0.0.1')).toEqual({ success: true })
+
+      expect(existsSync(join(librariesDir, 'node-uio'))).toBe(false)
+      expect(mod.listInstalled()).toEqual([])
+    })
+
+    it('leaves the other versions alone when one is removed', async () => {
+      const mod = makeModule()
+      await install(mod, 'node-uio', '0.0.1')
+      await install(mod, 'node-uio', '0.0.2')
+
+      expect(mod.uninstall('node-uio', '0.0.2')).toEqual({ success: true })
+
+      expect(existsSync(join(librariesDir, 'node-uio', '0.0.1', 'node-uio.stlib'))).toBe(true)
+      expect(mod.listInstalled()).toEqual([expect.objectContaining({ version: '0.0.1', versions: ['0.0.1'] })])
     })
 
     it('re-installing a version reuses its folder rather than making another', async () => {
