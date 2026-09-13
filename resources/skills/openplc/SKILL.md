@@ -52,19 +52,20 @@ generated ST and reports them:
 `--lint` also checks the protocol configuration, which has the same problem in a
 different place — all of these save, upload and half-exist:
 
-| rule                                     | severity | means                                                                                                       |
-| ---------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
-| `duplicate-protocol-server`              | error    | Two enabled servers of one protocol; the runtime takes one config, so the second is dropped.                |
-| `server-port-conflict`                   | error    | Two enabled servers on one port.                                                                            |
-| `modbus-device-without-io-groups`        | error    | The generator drops the device: it uploads cleanly and polls nothing.                                       |
-| `modbus-rtu-without-serial-port`         | error    | Same, for an RTU device with no `serialPort`.                                                               |
-| `located-global-collides-with-remote-io` | error    | A global's hand-written address was also handed to a device, which overwrites it every poll. Bind by alias. |
-| `opcua-config-invalid`                   | error    | The OPC-UA generator's own validator — usually a node naming a variable the program does not have.          |
-| `opcua-node-id-is-an-identifier`         | error    | `nodeId` carries a whole node id; the server adds its own namespace, so the id you wrote is unreachable.    |
-| `ethercat-config-invalid`                | error    | The EtherCAT config could not be generated or did not validate.                                             |
-| `modbus-rtu-serial-port-shared`          | warning  | Two RTU masters on one serial line.                                                                         |
-| `ethercat-master-without-slaves`         | warning  | No config is generated for the bus.                                                                         |
-| `ethercat-slave-without-channels`        | warning  | The slave exchanges no data.                                                                                |
+| rule                                     | severity | means                                                                                                        |
+| ---------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| `duplicate-protocol-server`              | error    | Two enabled servers of one protocol; the runtime takes one config, so the second is dropped.                 |
+| `server-port-conflict`                   | error    | Two enabled servers on one port.                                                                             |
+| `modbus-device-without-io-groups`        | error    | The generator drops the device: it uploads cleanly and polls nothing.                                        |
+| `modbus-rtu-without-serial-port`         | error    | Same, for an RTU device with no `serialPort`.                                                                |
+| `located-global-collides-with-remote-io` | error    | A global's hand-written address was also handed to a device, which overwrites it every poll. Bind by alias.  |
+| `opcua-config-invalid`                   | error    | The OPC-UA generator's own validator — usually a node naming a variable the program does not have.           |
+| `opcua-node-id-is-an-identifier`         | error    | `nodeId` carries a whole node id; the server adds its own namespace, so the id you wrote is unreachable.     |
+| `ethercat-config-invalid`                | error    | The EtherCAT config could not be generated or did not validate.                                              |
+| `opcua-server-unauthenticated`           | warning  | An enabled server whose every enabled profile is None/None + Anonymous — open to any client that reaches it. |
+| `modbus-rtu-serial-port-shared`          | warning  | Two RTU masters on one serial line.                                                                          |
+| `ethercat-master-without-slaves`         | warning  | No config is generated for the bus.                                                                          |
+| `ethercat-slave-without-channels`        | warning  | The slave exchanges no data.                                                                                 |
 
 An error fails the command (exit 4); a warning does not. So `--lint` is safe to
 leave on in a pipeline.

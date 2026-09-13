@@ -102,7 +102,18 @@ export function describeFbdBody(
     return out
   })
 
-  const connections = (flow?.rung?.edges ?? []).map((edge) => ({
+  // An edge naming a node the diagram does not hold would render as an empty
+  // `from` or `to` — the silent flattening this describer exists to refuse.
+  const edges = flow?.rung?.edges ?? []
+  const dangling = edges.find((edge) => !labelById.has(edge.source) || !labelById.has(edge.target))
+  if (dangling) {
+    return {
+      ok: false,
+      reason: `a connection names a node the diagram does not hold ("${dangling.source}" -> "${dangling.target}")`,
+    }
+  }
+
+  const connections = edges.map((edge) => ({
     from: pinRef(labelById.get(edge.source), edge.sourceHandle),
     to: pinRef(labelById.get(edge.target), edge.targetHandle),
   }))

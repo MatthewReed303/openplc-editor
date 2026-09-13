@@ -69,6 +69,22 @@ export function normalizeEthercatSlave(input: EthercatSlaveInput): NormalizeResu
   const name = generateUniqueSlaveName(baseName, takenNames)
   takenNames.add(name)
 
+  // An alias naming a channel the ESI does not have is dropped by the map
+  // below, so `apply` would report success and the next `describe` would simply
+  // not carry the alias. Name the channels instead.
+  const channelIds = new Set(enriched.channelMappings.map((mapping) => mapping.channelId))
+  const unknown = Object.keys(spec.aliases ?? {}).filter((channelId) => !channelIds.has(channelId))
+  if (unknown.length > 0) {
+    return {
+      ok: false,
+      errors: unknown.map(
+        (channelId) =>
+          `${where}: alias names channel "${channelId}", which this device does not have. ` +
+          `Its channels are: ${[...channelIds].join(', ')}.`,
+      ),
+    }
+  }
+
   const channelMappings = spec.aliases
     ? enriched.channelMappings.map((mapping) =>
         spec.aliases?.[mapping.channelId] ? { ...mapping, alias: spec.aliases[mapping.channelId] } : mapping,

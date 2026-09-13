@@ -70,13 +70,20 @@ function stripComments(text: string): string {
   return text.replace(/\(\*[\s\S]*?\*\)/g, ' ').replace(/\/\/[^\n]*/g, ' ')
 }
 
+/** Regex-safe form of a name read from project data, which is not validated. */
+function escapeForRegex(name: string): string {
+  return name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 function mentions(text: string, name: string): boolean {
-  return new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(text)
+  return new RegExp(`\\b${escapeForRegex(name)}\\b`, 'i').test(text)
 }
 
 /** The argument list of `name(...)`, scanned for balance so nesting is safe. */
 function callArguments(statements: string, name: string): string | null {
-  const opener = new RegExp(`\\b${name}\\s*\\(`, 'i')
+  // Escaped: a legacy JSON project can carry an instance name the editor would
+  // refuse, and a raw metacharacter here either throws or matches the wrong call.
+  const opener = new RegExp(`\\b${escapeForRegex(name)}\\s*\\(`, 'i')
   const found = opener.exec(statements)
   if (!found) return null
 

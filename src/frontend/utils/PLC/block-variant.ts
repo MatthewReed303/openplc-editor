@@ -70,7 +70,17 @@ export interface BuildBlockVariantInput {
 }
 
 export function buildBlockVariant(input: BuildBlockVariantInput): BuildBlockVariantResult {
-  const [blockLibraryType, blockLibrary, pouName] = input.blockRef.split('/')
+  const segments = input.blockRef.split('/')
+  const [blockLibraryType, blockLibrary, pouName] = segments
+
+  // Destructuring ignores anything past the third segment, so `system/lib/TON/x`
+  // would resolve as `system/lib/TON`. The two shapes have exact lengths.
+  if (blockLibraryType === 'system' && segments.length !== 3) {
+    return { ok: false, reason: 'malformed-ref', libraryType: 'system', blockRef: input.blockRef }
+  }
+  if (blockLibraryType === 'user' && segments.length !== 2) {
+    return { ok: false, reason: 'malformed-ref', libraryType: 'user', blockRef: input.blockRef }
+  }
 
   if (blockLibraryType === 'system') {
     if (!blockLibrary || !pouName)

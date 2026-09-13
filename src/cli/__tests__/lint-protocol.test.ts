@@ -195,3 +195,68 @@ describe('an EtherCAT bus', () => {
     expect(rules({ remoteDevices: [broken] })).toContain('ethercat-config-invalid')
   })
 })
+
+describe('an OPC-UA server left on the shipped profile', () => {
+  const opcuaServer = (profiles: { enabled: boolean; policy: string; mode: string; auth: string[] }[]): PLCServer =>
+    ({
+      name: 'OPC',
+      protocol: 'opc-ua',
+      opcuaServerConfig: {
+        server: {
+          enabled: true,
+          name: 'OpenPLC OPC UA Server',
+          applicationUri: 'urn:openplc:opcua:server',
+          productUri: 'urn:openplc:runtime',
+          bindAddress: '0.0.0.0',
+          port: 4840,
+          endpointPath: '/openplc/opcua',
+        },
+        securityProfiles: profiles.map((profile, index) => ({
+          id: `profile-${index}`,
+          name: `profile-${index}`,
+          enabled: profile.enabled,
+          securityPolicy: profile.policy,
+          securityMode: profile.mode,
+          authMethods: profile.auth,
+        })),
+        security: {
+          serverCertificateStrategy: 'auto_self_signed',
+          serverCertificateCustom: null,
+          serverPrivateKeyCustom: null,
+          trustedClientCertificates: [],
+        },
+        users: [],
+        cycleTimeMs: 100,
+        addressSpace: { namespaceUri: 'urn:openplc:opcua:namespace', nodes: [] },
+      },
+    }) as unknown as PLCServer
+
+  const anonymous = { enabled: true, policy: 'None', mode: 'None', auth: ['Anonymous'] }
+  const signed = { enabled: true, policy: 'Basic256Sha256', mode: 'SignAndEncrypt', auth: ['UserName'] }
+
+  it('warns when the only enabled profile is the shipped anonymous one', () => {
+    expect(rules({ servers: [opcuaServer([anonymous])] })).toContain('opcua-server-unauthenticated')
+  })
+
+  it('stays quiet once a real profile is enabled alongside it', () => {
+    expect(rules({ servers: [opcuaServer([anonymous, signed])] })).not.toContain('opcua-server-unauthenticated')
+  })
+
+  it('stays quiet when the anonymous profile is disabled', () => {
+    expect(rules({ servers: [opcuaServer([{ ...anonymous, enabled: false }, signed])] })).not.toContain(
+      'opcua-server-unauthenticated',
+    )
+  })
+
+  it('says the address and port, which is what makes the warning actionable', () => {
+    const finding = lintProtocols({
+      servers: [opcuaServer([anonymous])],
+      remoteDevices: [],
+      debugMapContent: '',
+      instances: [],
+      globals: [],
+    }).find((f) => f.rule === 'opcua-server-unauthenticated')
+    expect(finding?.message).toContain('0.0.0.0:4840')
+    expect(finding?.severity).toBe('warning')
+  })
+})

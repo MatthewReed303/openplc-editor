@@ -40,7 +40,11 @@ export function resolveSkillRoot(environment: SkillSourceEnvironment): string | 
 export function resolveSkillPath(environment: SkillSourceEnvironment, name: string): string | null {
   const root = resolveSkillRoot(environment)
   if (!root) return null
-  // A name is a single path segment; anything else is not a skill we ship.
+  // A name is a single path segment naming a real skill. `''` and `'.'` both
+  // join to the skills ROOT, which exists — the caller would then read
+  // `<root>/SKILL.md`, which does not, and fail instead of reporting a skill
+  // it does not ship.
+  if (name.length === 0 || name === '.') return null
   if (name.includes('/') || name.includes('\\') || name.includes('..')) return null
   const path = join(root, name)
   return existsSync(path) ? path : null

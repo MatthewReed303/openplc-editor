@@ -31,7 +31,7 @@ import { ErrorCode, ExitCode } from '../exit-codes'
 import { type LintFinding, lintProgram } from '../lint/program'
 import { lintProtocols } from '../lint/protocol'
 import type { CliResult, Reporter } from '../output'
-import { loadProject } from '../project/load'
+import { loadProject, unreadableProtocolFilesMessage } from '../project/load'
 
 export async function runCheck(args: ParsedArgs, reporter: Reporter): Promise<CliResult> {
   const projectPath = args.positionals[0] ?? stringFlag(args, 'project')
@@ -47,6 +47,21 @@ export async function runCheck(args: ParsedArgs, reporter: Reporter): Promise<Cl
     return reporter.failure({ code: ErrorCode.ProjectNotFound, message: loaded.error }, ExitCode.NotFound)
   }
   for (const warning of loaded.project.warnings) reporter.progress(warning)
+
+  // Same refusal `apply` and `describe` make. A skipped server file is absent
+  // from the project, so `--protocols` and the protocol lint would both answer
+  // for a configuration that is not the one on disk — and answer "OK".
+  const unreadable = unreadableProtocolFilesMessage(loaded.project)
+  if (unreadable) {
+    return reporter.failure(
+      {
+        code: ErrorCode.ProtocolFileUnreadable,
+        message: unreadable,
+        details: loaded.project.unreadableProtocolFiles,
+      },
+      ExitCode.TargetError,
+    )
+  }
 
   const target = stringFlag(args, 'target') ?? loaded.project.board
   if (!target) {

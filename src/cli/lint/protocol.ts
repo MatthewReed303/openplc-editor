@@ -234,6 +234,31 @@ function lintOpcUa(input: ProtocolLintInput): LintFinding[] {
       })
     }
 
+    // The shipped default profile is `None`/`None` with Anonymous auth, and it
+    // is inert in the editor because a new server starts disabled. A spec that
+    // says `enabled: true` without naming a profile inherits it and opens an
+    // unauthenticated server on every interface. A warning, not an error: this
+    // is a legitimate choice on a closed network, and a rule that fails a
+    // correct configuration teaches the reader to stop reading.
+    const open = config.securityProfiles.filter(
+      (profile) =>
+        profile.enabled &&
+        profile.securityPolicy === 'None' &&
+        profile.securityMode === 'None' &&
+        profile.authMethods.includes('Anonymous'),
+    )
+    if (open.length > 0 && config.securityProfiles.every((profile) => !profile.enabled || open.includes(profile))) {
+      findings.push({
+        severity: 'warning',
+        pou: null,
+        rule: 'opcua-server-unauthenticated',
+        message:
+          `OPC-UA server "${server.name}" is enabled on ${config.server.bindAddress}:${config.server.port} and ` +
+          'every enabled security profile is None/None with Anonymous auth, so any client that can reach it can ' +
+          'read and write. Add a profile with a policy and an authentication method, or bind it to one interface.',
+      })
+    }
+
     // `nodeId` is the IDENTIFIER, which the plugin wraps as `ns=<idx>;s=<id>`
     // (`opcua/address_space.py`). Writing a whole node id here produces
     // `ns=2;s=ns=1;s=Thing`, which browses fine and cannot be read by the id

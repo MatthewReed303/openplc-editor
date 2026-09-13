@@ -172,7 +172,7 @@ be large enough to reach the address you care about — 32 bytes to see `%QX10.0
 }
 ```
 
-Four things that are easy to get wrong:
+Five things that are easy to get wrong:
 
 - **`nodeId` is the identifier, not a node id.** The server adds its own
   namespace, so `PLC.PlantLogic.levelPct` becomes
@@ -187,6 +187,12 @@ Four things that are easy to get wrong:
 - **Permissions are enforced.** An anonymous client is a `viewer`, so a node with
   `viewer: "r"` refuses its writes. Allow `Username` on a profile and give the
   user `operator` or `engineer` to write.
+- **Omitting `securityProfiles` leaves the server open.** The shipped default is
+  one enabled `None`/`None` Anonymous profile. In the editor that is harmless
+  because a new server starts disabled; a spec saying `enabled: true` without
+  naming a profile inherits it and serves `0.0.0.0:4840` to any client that can
+  reach it. `check --lint` warns (`opcua-server-unauthenticated`). Name a profile
+  with a policy and an auth method, or bind the server to one interface.
 - **Secrets are redacted by `describe` and preserved by `apply`.**
   `security.serverPrivateKeyCustom` and every `users[].passwordHash` are left out
   of `describe` output; applying a spec that omits them keeps what is stored.

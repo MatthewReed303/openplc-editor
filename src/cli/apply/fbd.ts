@@ -136,6 +136,17 @@ export function applyFbdBody(pouName: string, body: SpecFbdBody): string[] {
     })
   }
 
+  // A label is how a connection names a node, so two nodes sharing one makes
+  // every reference to it ambiguous — the graph builder keeps the last and the
+  // earlier node silently loses its wires.
+  const seenLabels = new Set<string>()
+  for (const node of nodes) {
+    if (seenLabels.has(node.label)) {
+      errors.push(`POU "${pouName}": two nodes are both labelled "${node.label}"; a label names one node.`)
+    }
+    seenLabels.add(node.label)
+  }
+
   if (errors.length > 0) return errors
 
   // Every pin a connection names must exist, or be one an extensible block can

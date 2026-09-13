@@ -209,4 +209,24 @@ describe('force read-back of a duration', () => {
     if (!response.ok) throw new Error('expected success')
     expect(response).toMatchObject({ data: { value: { name: 'main:preset', value: '1s', forced: true } } })
   })
+
+  it.each(['T#1s500ms', 'T#1500ms', 'TIME#1500MS'])('does not settle %s against a 1s read-back', async (requested) => {
+    // All three spell 1.5s — mixed units, a single unit, and a different case.
+    // Each parses to the same value, and none of them is the 1s this channel
+    // reads back, so none may settle.
+    const response = await makeTimeCore().handle({ id: 1, kind: 'force', name: 'main:preset', value: requested })
+
+    expect(response.ok).toBe(false)
+  })
+
+  it('refuses a duration that read back as a DIFFERENT value', async () => {
+    // The point of parsing rather than accepting any string: `T#2s` against a
+    // channel stuck at 1s is a force that did not land, and reporting it as
+    // settled hides exactly the failure this file exists to catch.
+    const response = await makeTimeCore().handle({ id: 1, kind: 'force', name: 'main:preset', value: 'T#2s' })
+
+    expect(response.ok).toBe(false)
+    if (response.ok) throw new Error('expected a failure')
+    expect(response.error.code).toBe(ErrorCode.TargetError)
+  })
 })
