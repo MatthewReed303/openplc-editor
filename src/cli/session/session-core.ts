@@ -648,7 +648,15 @@ function writeHasSettled(value: VariableValue, requested: string): boolean {
     const parsed = Number(wanted.replace(/^16#/, '0x'))
     return Number.isNaN(parsed) ? true : Math.abs(value.value - parsed) < 1e-6
   }
-  if (typeof value.value === 'string') return value.value.toUpperCase() === wanted
+  if (typeof value.value === 'string') {
+    // A duration is requested as an IEC literal (`T#1s`) and reads back
+    // formatted (`1s`), and the two do not agree as text even when the write
+    // landed — `T#1500ms` comes back as `1s500ms`. This is the "cannot be
+    // compared" case the doc above describes, so give up rather than spin to the
+    // timeout and report a write that actually succeeded as a failure.
+    if (/^L?(TIME)?#/.test(wanted) || /^L?T#/.test(wanted)) return true
+    return value.value.toUpperCase() === wanted
+  }
   return true
 }
 
