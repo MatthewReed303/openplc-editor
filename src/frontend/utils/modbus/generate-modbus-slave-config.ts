@@ -49,15 +49,28 @@ interface ModbusSlaveConfig {
 type ModbusSlaveConfigLog = (message: string) => void
 
 /**
- * Generates the Modbus Slave plugin configuration JSON from the project's servers.
- * Returns null if there are no enabled Modbus TCP servers configured.
+ * The Modbus slave plugin's configuration, from the project's servers, or `null`
+ * when nothing is to be served.
+ *
+ * A DISABLED server produces nothing. The runtime has no switch of its own: the
+ * plugin comes up if and only if `conf/modbus_slave.json` is in the bundle
+ * (`composeRuntimeV4Bundle` skips the file for a `null` here), so "not in the
+ * configuration" is the only way to express "off". Until now this read the first
+ * server carrying a `modbusSlaveConfig` and ignored `enabled` entirely, which
+ * made the screen's master switch do nothing at all on Runtime v4 while it
+ * worked on baremetal -- and, with several servers in a project, could hand the
+ * runtime a disabled one while an enabled one sat behind it in the list.
+ *
+ * The file the plugin reads describes ONE slave, so one is what this emits. A
+ * project may legitimately carry several; the first enabled one wins. Serving
+ * several at once would be a change to the plugin's file format, not to this
+ * function.
  *
  * The runtime enables the plugin by the presence of `conf/modbus_slave.json`,
  * so a disabled server must produce null — shipping the file opens the port.
  *
  * @param servers - Array of PLCServer from the project data
- * @param log - Optional sink for non-fatal diagnostics (e.g. a second Modbus server)
- * @returns The Modbus Slave configuration as a JSON string, or null if no servers are configured
+ * @returns The Modbus Slave configuration as a JSON string, or null
  */
 export const generateModbusSlaveConfig = (
   servers: PLCServer[] | undefined,
@@ -67,8 +80,8 @@ export const generateModbusSlaveConfig = (
     return null
   }
 
-  const enabledServers = servers.filter(
-    (server) => server.protocol === 'modbus-tcp' && server.modbusSlaveConfig?.enabled,
+  const modbusServer = servers.find(
+    (server) => server.protocol === 'modbus-tcp' && server.modbusSlaveConfig && server.modbusSlaveConfig.enabled,
   )
 
   // The runtime takes one Modbus slave config. A second enabled server is
