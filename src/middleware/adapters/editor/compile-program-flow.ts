@@ -128,13 +128,13 @@ export type PrepareProjectResult = { ok: true; prepared: PreparedProject } | { o
  * preprocessing — everything `compileProgramFlow` does before it builds the IPC
  * argument tuple.
  *
- * Needs only two of the transport's three calls; `runCompileProgram` is not
- * reached, which is what lets a non-building caller pass a transport with no
- * runtime behind it.
+ * `runCompileProgram` is not reached, which is what lets a non-building caller
+ * pass a transport with no runtime behind it. The package notice is optional
+ * on the transport, so a caller without a catalogue simply gets none.
  */
 export async function prepareProjectForCompile(
   args: Pick<CompileProgramArgs, 'projectData' | 'boardTarget' | 'isSimulator'>,
-  transport: Pick<CompileProgramTransport, 'getAvailableBoards' | 'loadAllLibraries'>,
+  transport: Pick<CompileProgramTransport, 'getAvailableBoards' | 'loadAllLibraries' | 'findPackageUpdateNotice'>,
   onProgress: (event: CompileProgressEvent) => void,
 ): Promise<PrepareProjectResult> {
   const boards = await transport.getAvailableBoards()

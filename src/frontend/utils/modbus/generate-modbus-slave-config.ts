@@ -70,7 +70,8 @@ type ModbusSlaveConfigLog = (message: string) => void
  * so a disabled server must produce null — shipping the file opens the port.
  *
  * @param servers - Array of PLCServer from the project data
- * @returns The Modbus Slave configuration as a JSON string, or null
+ * @param log - Optional sink for non-fatal diagnostics (e.g. a second Modbus server)
+ * @returns The Modbus Slave configuration as a JSON string, or null if no servers are configured
  */
 export const generateModbusSlaveConfig = (
   servers: PLCServer[] | undefined,
@@ -80,8 +81,8 @@ export const generateModbusSlaveConfig = (
     return null
   }
 
-  const modbusServer = servers.find(
-    (server) => server.protocol === 'modbus-tcp' && server.modbusSlaveConfig && server.modbusSlaveConfig.enabled,
+  const enabledServers = servers.filter(
+    (server) => server.protocol === 'modbus-tcp' && server.modbusSlaveConfig?.enabled,
   )
 
   // The runtime takes one Modbus slave config. A second enabled server is
