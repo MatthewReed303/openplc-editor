@@ -1,6 +1,11 @@
 {
   "strucpp": {
+<<<<<<< HEAD
     "version": "v0.6.7-rc.3",
     "repository": "MatthewReed303/STruCpp"
+=======
+    "version": "v0.6.8",
+    "repository": "Autonomy-Logic/STruCpp"
+>>>>>>> feature/library-resources-build-settings
   }
 }
