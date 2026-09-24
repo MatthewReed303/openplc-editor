@@ -8,12 +8,16 @@ import { getLanguageFromExtension } from './pou-file-extensions'
  * @returns Object with documentation and remaining content
  */
 export const extractDocumentation = (content: string): { documentation: string; remainingContent: string } => {
-  const docMatch = content.match(/^\s*\(\*\s*(.*?)\s*\*\)\s*\n/s)
-  if (docMatch) {
-    return {
-      documentation: docMatch[1].trim(),
-      remainingContent: content.slice(docMatch[0].length),
-    }
+  // A comment is legal wherever whitespace is, so a header may be written as
+  // several consecutive blocks.  Taking only the first leaves the rest in
+  // front of the declaration, which the declaration regex then fails to match.
+  const blocks: string[] = []
+  let remainingContent = content
+  for (;;) {
+    const docMatch = remainingContent.match(/^\s*\(\*\s*(.*?)\s*\*\)\s*\n/s)
+    if (!docMatch) break
+    blocks.push(docMatch[1].trim())
+    remainingContent = remainingContent.slice(docMatch[0].length)
   }
   return {
     documentation: blocks.join('\n\n'),
@@ -196,9 +200,14 @@ export const parseTextualPouFromString = (content: string, language: string, typ
       throw new Error(formatParseError(`Unsupported POU type: ${type}`))
     }
 
-    const declarationMatch = remainingContent.match(
-      new RegExp(`^\\s*(${typeKeyword})\\s+(\\w+)(?:\\s*:\\s*(\\w+))?`, 'i'),
+    // Captures the EXTENDS clause: anything between the POU name and the first
+    // VAR block fell outside `declarationMatch[0]` and was dropped, so a derived
+    // block reached the compiler with no base.
+    const declarationRegex = new RegExp(
+      `^\\s*(${typeKeyword})\\s+(\\w+)(?:\\s*:\\s*(\\w+))?(?:\\s+EXTENDS\\s+(\\w+))?`,
+      'i',
     )
+    const declarationMatch = remainingContent.match(declarationRegex)
 
     if (!declarationMatch) {
       throw new Error(formatParseError(`Could not find ${typeKeyword} declaration`))
@@ -279,9 +288,14 @@ export const parseHybridPouFromString = (content: string, language: string, type
       throw new Error(formatParseError(`Unsupported POU type: ${type}`))
     }
 
-    const declarationMatch = remainingContent.match(
-      new RegExp(`^\\s*(${typeKeyword})\\s+(\\w+)(?:\\s*:\\s*(\\w+))?`, 'i'),
+    // Captures the EXTENDS clause: anything between the POU name and the first
+    // VAR block fell outside `declarationMatch[0]` and was dropped, so a derived
+    // block reached the compiler with no base.
+    const declarationRegex = new RegExp(
+      `^\\s*(${typeKeyword})\\s+(\\w+)(?:\\s*:\\s*(\\w+))?(?:\\s+EXTENDS\\s+(\\w+))?`,
+      'i',
     )
+    const declarationMatch = remainingContent.match(declarationRegex)
 
     if (!declarationMatch) {
       throw new Error(formatParseError(`Could not find ${typeKeyword} declaration`))
@@ -362,9 +376,14 @@ export const parseGraphicalPouFromString = (content: string, language: string, t
       throw new Error(formatParseError(`Unsupported POU type: ${type}`))
     }
 
-    const declarationMatch = remainingContent.match(
-      new RegExp(`^\\s*(${typeKeyword})\\s+(\\w+)(?:\\s*:\\s*(\\w+))?`, 'i'),
+    // Captures the EXTENDS clause: anything between the POU name and the first
+    // VAR block fell outside `declarationMatch[0]` and was dropped, so a derived
+    // block reached the compiler with no base.
+    const declarationRegex = new RegExp(
+      `^\\s*(${typeKeyword})\\s+(\\w+)(?:\\s*:\\s*(\\w+))?(?:\\s+EXTENDS\\s+(\\w+))?`,
+      'i',
     )
+    const declarationMatch = remainingContent.match(declarationRegex)
 
     if (!declarationMatch) {
       throw new Error(formatParseError(`Could not find ${typeKeyword} declaration`))

@@ -2,6 +2,7 @@ import { produce } from 'immer'
 import { StateCreator } from 'zustand'
 
 import { librariesOwningTypes } from '../../../utils/library-usage'
+import { compareSemver } from '../../../utils/semver'
 import type { SharedRootState } from '../shared/types'
 import type { LibraryProjectRef, LibrarySlice, OutdatedLibrary, SystemLibrary } from './types'
 

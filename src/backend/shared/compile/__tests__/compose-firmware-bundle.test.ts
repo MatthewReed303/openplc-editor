@@ -323,6 +323,7 @@ describe('composeFirmwareBundle — OpenPLCUserLib.h stub', () => {
       strucppFiles: {},
       cBlocks: { header: '', code: 'void x() {}', libDeps: '#include <Adafruit_NeoPixel.h>\n' },
       definesH: '',
+      libraryResources: [],
     })
     expect(out['examples/Baremetal/c_blocks_libdeps.cpp']).toContain('#include <Adafruit_NeoPixel.h>')
   })
@@ -333,6 +334,7 @@ describe('composeFirmwareBundle — OpenPLCUserLib.h stub', () => {
       strucppFiles: {},
       cBlocks: { header: '', code: 'void x() {}', libDeps: null },
       definesH: '',
+      libraryResources: [],
     })
     expect(out['examples/Baremetal/c_blocks_libdeps.cpp']).toBeUndefined()
   })

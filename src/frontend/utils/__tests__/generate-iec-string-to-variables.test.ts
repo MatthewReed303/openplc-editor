@@ -145,13 +145,10 @@ describe('buildTypeContext — the classification the compiler cannot make', () 
   })
 
   it('does not read an empty bound as a variable-length one', () => {
-    // `*` is a bound; nothing is not. `ARRAY []` still declines to parse as an
-    // array — it carries no dimension for the array path to read — so it lands
-    // as a named type rather than being mistaken for `ARRAY [*]`.
-    const result = parseIecStringToVariables('VAR\n  bad : ARRAY [] OF INT;\nEND_VAR')
-
-    expect(result[0].type.definition).not.toBe('array')
-    expect(result[0].type.value).toBe('ARRAY [] OF INT')
+    // `*` is a bound; nothing is not. The scanner rejects `ARRAY []` outright
+    // rather than letting it through as a named type, so the guarantee this
+    // test exists for still holds: an empty bound is never read as `ARRAY [*]`.
+    expect(() => parseIecStringToVariables('VAR\n  bad : ARRAY [] OF INT;\nEND_VAR')).toThrow(/ARRAY dimension/)
   })
 
   it('does not mistake a comment for a type', () => {

@@ -29,6 +29,7 @@ import {
 } from '../utils/PLC/validate-variable-type'
 import { collectDeclaredRoots, rootIdentifierOf } from './project-scope-roots'
 // The leaf, not the `st-lsp` barrel: the barrel pulls ESM-only LSP packages that Jest cannot transform.
+import type { ScopedCompletionItem } from './st-lsp/scoped-query'
 import { getScopedQueryApi, isValueCompletionKind, splitExpression } from './st-lsp/scoped-query'
 
 /** Max instance/struct variables to drill into when a type-filtered search has no direct hits. */
@@ -208,9 +209,7 @@ async function resolveVariableSubscript(
   // rather than parsing the rendered `ARRAY [0..3] OF BOOL` keeps the language
   // server the authority on both.
   const prefix = `${parts.base.toLowerCase()}[`
-  const element = items.find(
-    (item) => isValueCompletionKind(item.kind) && item.label.toLowerCase().startsWith(prefix),
-  )
+  const element = items.find((item) => isValueCompletionKind(item.kind) && item.label.toLowerCase().startsWith(prefix))
   if (!element || !element.type) return { status: 'unknown' }
 
   const elementParts = splitSubscripts(element.label)

@@ -510,28 +510,25 @@ point of naming a timeout is that the default was wrong for this run.
 
 ### Flags, by command
 
-| Flag                   | Command                    | Meaning                                                                                                      |
-| ---------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `--session <id>`       | any `debug` subcommand     | which session, when several are open                                                                         |
-| `--idle-timeout <ms>`  | `debug open`               | idle budget; `0` disables (see above)                                                                        |
-| `--force-new`          | `debug open`               | start a session even if one is already open for this project and target                                      |
-| `--upload-if-needed`   | `debug open`               | upload first when the target's program does not match                                                        |
-| `--var <name>`         | `read`, `force`, `unforce` | the variable, when you would rather not pass it positionally                                                 |
-| `--value <literal>`    | `force`                    | the value — `16#FF`, `TRUE`, `T#5s`, all as the GUI accepts them                                             |
-| `--filter <substring>` | `list-vars`                | only variables whose path contains it                                                                        |
-| `--interval <ms>`      | `watch`                    | sampling cadence; floor 20 ms                                                                                |
-| `--since <seq>`        | `poll`                     | drops samples up to this sequence number; the buffer is drained either way, so it is not a rewindable cursor |
-| `--keep-forces`        | `close`                    | leave forced variables pinned                                                                                |
-| `--all`                | `close`                    | every session, not just one                                                                                  |
-| `--keep-going`         | `exec`                     | run the remaining lines after one fails                                                                      |
-| `--force`              | `create`                   | overwrite an existing destination                                                                            |
-| `--clean`              | `compile`, `upload`        | discard the build directory first                                                                            |
-| `--user-data <dir>`    | any command                | which editor state to use: settings, arduino-cli config, installed packages                                  |
-| `-y`, `--yes`          | `upload`                   | skip the confirmation                                                                                        |
-| `--create-user`        | `upload`                   | permission to create the FIRST user on a fresh runtime v4, using the credentials you already passed          |
-| `--protocols`          | `check`                    | which `conf/*.json` the upload would carry — the runtime's enable state, computed without a device           |
-| `--prune`              | `apply`                    | delete what the spec stopped mentioning, including servers and remote devices                                |
-| `--project <dir>`      | `esi`                      | the project whose ESI repository to read or add to                                                           |
+| Flag                   | Command                    | Meaning                                                                                             |
+| ---------------------- | -------------------------- | --------------------------------------------------------------------------------------------------- |
+| `--session <id>`       | any `debug` subcommand     | which session, when several are open                                                                |
+| `--idle-timeout <ms>`  | `debug open`               | idle budget; `0` disables (see above)                                                               |
+| `--force-new`          | `debug open`               | start a session even if one is already open for this project and target                             |
+| `--upload-if-needed`   | `debug open`               | upload first when the target's program does not match                                               |
+| `--var <name>`         | `read`, `force`, `unforce` | the variable, when you would rather not pass it positionally                                        |
+| `--value <literal>`    | `force`                    | the value — `16#FF`, `TRUE`, `T#5s`, all as the GUI accepts them                                    |
+| `--filter <substring>` | `list-vars`                | only variables whose path contains it                                                               |
+| `--interval <ms>`      | `watch`                    | sampling cadence; floor 20 ms                                                                       |
+| `--since <seq>`        | `poll`                     | only samples after this sequence number                                                             |
+| `--keep-forces`        | `close`                    | leave forced variables pinned                                                                       |
+| `--all`                | `close`                    | every session, not just one                                                                         |
+| `--keep-going`         | `exec`                     | run the remaining lines after one fails                                                             |
+| `--force`              | `create`                   | overwrite an existing destination                                                                   |
+| `--clean`              | `compile`, `upload`        | discard the build directory first                                                                   |
+| `--user-data <dir>`    | any command                | which editor state to use: settings, arduino-cli config, installed packages                         |
+| `-y`, `--yes`          | `upload`                   | skip the confirmation                                                                               |
+| `--create-user`        | `upload`, `debug open`     | permission to create the FIRST user on a fresh runtime v4, using the credentials you already passed |
 
 `watch` **records** into a buffer inside the session rather than streaming, so a
 transient that happens between two of your own commands is still there when you

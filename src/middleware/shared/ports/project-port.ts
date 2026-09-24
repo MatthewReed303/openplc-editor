@@ -355,6 +355,30 @@ export interface ProjectPort {
     error?: string
   }>
 
+  /**
+   * The library folders under a library project's `resources/`, each with
+   * the files it ships.  Optional: only a library project has the
+   * directory, and only the desktop editor manages it today.
+   */
+  listLibraryResources?(): Promise<{ success: boolean; folders?: LibraryResourceFolder[]; error?: string }>
+
+  /**
+   * Ask the user for a library folder and copy it into `resources/`.
+   * `canceled` distinguishes a dismissed picker from a failure, so the
+   * caller can stay silent rather than reporting an error the user caused
+   * on purpose.
+   * Editor: native open-directory dialog, recursive copy.
+   */
+  addLibraryResource?(): Promise<{
+    success: boolean
+    canceled?: boolean
+    folder?: LibraryResourceFolder
+    error?: string
+  }>
+
+  /** Remove one library folder from `resources/`. */
+  removeLibraryResource?(folderName: string): Promise<{ success: boolean; error?: string }>
+
   pickPlcopenImportFile(): Promise<{ success: boolean; content?: string; error?: string }>
 
   exportPlcopenFile(defaultFileName: string, xml: string): Promise<{ success: boolean; error?: string }>

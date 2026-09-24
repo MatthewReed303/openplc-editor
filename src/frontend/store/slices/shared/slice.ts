@@ -13,7 +13,11 @@ import { syncNodesWithVariables, syncNodesWithVariablesFBD } from '../../../util
 import { isLegalIdentifier } from '../../../utils/keywords'
 import { newUuid } from '../../../utils/new-uuid'
 import { findGlobalVariableListReferences } from '../../../utils/PLC/global-variable-list-references'
-import { restampFlowBlockVariants } from '../../../utils/PLC/restamp-block-variants'
+import {
+  type RestampChange,
+  restampFlowLibraryVariants,
+  summariseRestampChanges,
+} from '../../../utils/PLC/restamp-library-variants'
 import { normalizeOneVariablePerLine } from '../../../utils/PLC/variable-declarations'
 import { carryEditorMetadata } from '../../../utils/PLC/variable-metadata'
 import { generateUniqueSlaveName, type NameTaken } from '../../../utils/unique-slave-name'
@@ -1013,9 +1017,19 @@ const createSharedSlice: StateCreator<SharedRootState, [], [], SharedSlice> = (s
       const systemLibraries = getState().libraries.system
       const userPous = pous.filter((pou) => pou.pouType !== 'program')
       const userPouNames = userPous.map((pou) => pou.name.toUpperCase())
-      let restampedCount = 0
-      // Blocks still on the old two-sided VAR_IN_OUT pin are counted, never converted: the fix belongs to the
-      // block's update badge, and only project-owned blocks can show one.
+      const restampChanges: RestampChange[] = []
+      let restampPoolEmpty = false
+      let restampModified = false
+      // POUs holding a block still drawn with the old two-sided VAR_IN_OUT pin. Counted, never
+      // converted: the fix rewires the diagram, so it belongs to the block's update badge and
+      // not to project load. Reporting it here is the only signal the user would otherwise get,
+      // since the badge itself needs a hover to appear.
+      //
+      // Split by whether the block is backed by a POU in this project, because only those can
+      // actually be converted: the update badge resolves a block's interface through
+      // `libraries.user`, so a block provided by a library (oscat-basic's LIST_*, softmotion's
+      // MC_* Axis pins) has no badge and stays as it is. Promising a badge that will not appear
+      // would be worse than saying nothing.
       const convertibleInOutPous = new Set<string>()
       const libraryInOutBlocks = new Set<string>()
 

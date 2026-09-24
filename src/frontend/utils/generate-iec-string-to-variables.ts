@@ -1,6 +1,7 @@
 import type { LibraryState } from '../../middleware/shared/ports/library-types'
 import { baseTypeSchema } from '../../middleware/shared/ports/plc-schemas'
 import type { PLCDataType, PLCPou, PLCVariable } from '../../middleware/shared/ports/types'
+import { parseStringLength } from './iec-types-registry'
 import type { TypeContext } from './PLC/variable-declarations'
 import { parseVariableDeclarations } from './PLC/variable-declarations'
 

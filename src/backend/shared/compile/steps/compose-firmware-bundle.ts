@@ -316,7 +316,7 @@ export function buildCBlocksFromPous(
   }))
   return {
     header: generateCBlocksHeader(headers, userTypeNames),
-    code: generateCBlocksCode(originalCppPous, userTypeNames),
+    code: generateCBlocksCode(originalCppPous, aliasTypeNames),
     libDeps: extractLibraryIncludes(originalCppPous),
   }
 }

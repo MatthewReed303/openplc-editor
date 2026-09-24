@@ -61,6 +61,7 @@ import { useDeviceConnectionMonitor } from '../hooks/use-device-connection-monit
 import { useDevicePlcState } from '../hooks/use-device-plc-state'
 import { useRuntimePolling } from '../hooks/use-runtime-polling'
 import { forceDebugVariable, releaseDebugVariable } from '../services/debug-force-variable'
+import { openPackageManagerTab } from '../services/open-package-manager-tab'
 import { buildAllProjectFileContentsPure } from '../services/save-actions'
 import { useOpenPLCStore } from '../store'
 import { cn } from '../utils/cn'

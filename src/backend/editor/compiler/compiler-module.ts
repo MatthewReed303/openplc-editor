@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import crypto, { createHash } from 'node:crypto'
+import crypto, { createHash, randomUUID } from 'node:crypto'
 import type { Dirent } from 'node:fs'
 import { existsSync, promises as fs } from 'node:fs'
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
@@ -2000,6 +2000,7 @@ class CompilerModule {
       ...(variantPath ? [`-I${variantPath}`] : []),
       `-I${srcDir}`,
       `-I${baremetalDir}`,
+      ...discoveredIncludes,
       ...libraryIncludeFlags,
     ]
     const trailingFlags = ['-std=gnu++17', '-fno-rtti', ...extraNonIncludeFlags]
