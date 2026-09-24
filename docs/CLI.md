@@ -529,6 +529,9 @@ point of naming a timeout is that the default was wrong for this run.
 | `--user-data <dir>`    | any command                | which editor state to use: settings, arduino-cli config, installed packages                         |
 | `-y`, `--yes`          | `upload`                   | skip the confirmation                                                                               |
 | `--create-user`        | `upload`, `debug open`     | permission to create the FIRST user on a fresh runtime v4, using the credentials you already passed |
+| `--protocols`          | `check`                    | which `conf/*.json` the upload would carry — the runtime's enable state, computed without a device  |
+| `--prune`              | `apply`                    | delete what the spec stopped mentioning, including servers and remote devices                       |
+| `--project <dir>`      | `esi`                      | the project whose ESI repository to read or add to                                                  |
 
 `watch` **records** into a buffer inside the session rather than streaming, so a
 transient that happens between two of your own commands is still there when you

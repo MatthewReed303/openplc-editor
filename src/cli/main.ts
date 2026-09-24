@@ -39,8 +39,12 @@ import { runDescribe } from './commands/describe'
 import { runDevices } from './commands/devices'
 import { runEsi } from './commands/esi'
 import { runInstallCli } from './commands/install-cli'
+import { runInstallSkill } from './commands/install-skill'
+import { runKeywords } from './commands/keywords'
 import { runLibrary } from './commands/library'
 import { runPackages } from './commands/packages'
+import { runRuntime } from './commands/runtime'
+import { runSkill } from './commands/skill'
 import { runDaemonFromStdin } from './daemon-entry'
 import { ErrorCode, ExitCode, type ExitCodeValue } from './exit-codes'
 import { createProcessReporter, Reporter } from './output'
@@ -111,6 +115,15 @@ Usage
   openplc-cli library unpin <project> <name>
   openplc-cli packages list                                 (boards --target accepts, and their pins)
   openplc-cli packages install <file.vpp|dir>...            (same checks as the GUI: schema + signature)
+  openplc-cli runtime info --host <address>                 (version and capabilities; no login)
+  openplc-cli skill   [--list] [--name <skill>]            (the agent skill this build ships)
+  openplc-cli keywords [--names-only]                       (names an identifier may not take)
+  openplc-cli install-skill [--scope project|user] [--path <dir>]
+  openplc-cli describe <project> [--libraries] [--pou <name>]
+  openplc-cli apply   <spec.json>|- --project <dir> [--dry-run] [--prune]
+  openplc-cli check   <project> [--target <board>] [--pou <name>] [--emit-st] [--lint] [--protocols]
+  openplc-cli esi import <file.xml> --project <dir>         (add an ESI file for EtherCAT)
+  openplc-cli esi list --project <dir>                      (ids and device indices to reference)
   openplc-cli compile <project> [--target <board>] [--port <serial>] [--clean]
   openplc-cli upload  <project> (--host <address> | --port <serial>) [--target <board>] [--clean] [-y|--yes] [--create-user]
   openplc-cli debug open <project> --target <board> (--host <address> | --port <serial>) [--upload-if-needed]

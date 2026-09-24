@@ -401,83 +401,6 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
     return language === 'st' ? editorModelPath : monacoRef.current.Uri.parse(uniqueMonacoPath).toString()
   }, [editorMounted, language, editorModelPath, uniqueMonacoPath])
 
-<<<<<<< HEAD
-  const debugVarPositions = useMemo(() => {
-    // Active-tab-only: avoids every hidden multi-mounted editor re-scanning and decorating on each poll.
-    if (!isActive) return null
-    if (!isDebuggerVisible || !editorRef.current || !monacoRef.current || (language !== 'st' && language !== 'il'))
-      return null
-
-    const model = editorRef.current.getModel()
-    if (!model) return null
-
-    // Guard against a stale model during tab switches, before @monaco-editor/react swaps it.
-    const expectedUri = language === 'st' ? editorModelPath : monacoRef.current.Uri.file(uniqueMonacoPath).toString()
-    if (model.uri.toString() !== expectedUri) return null
-
-    const prefix = fbInstanceContext
-      ? `${fbInstanceContext.programName}:${fbInstanceContext.fbVariableName}.`
-      : `${name}:`
-
-    const varNames: string[] = []
-    for (const key of debugBoolValues.keys()) {
-      if (key.startsWith(prefix)) varNames.push(key.slice(prefix.length))
-    }
-    for (const key of debugNonBoolValues.keys()) {
-      if (key.startsWith(prefix)) varNames.push(key.slice(prefix.length))
-    }
-    if (varNames.length === 0) return null
-
-    varNames.sort((a, b) => b.length - a.length)
-
-    const exprPatterns = varNames.map((expr) => {
-      const escaped = expr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      return { expr, pattern: new RegExp(`\\b${escaped}(?![\\w.\\[])`, 'gi') }
-    })
-
-    const positions: Array<{ expr: string; line: number; startCol: number; endCol: number }> = []
-    let blockCommentState: BlockCommentState = false
-
-    for (let lineNumber = 1; lineNumber <= model.getLineCount(); lineNumber++) {
-      const result = stripLineComments(model.getLineContent(lineNumber), blockCommentState)
-      blockCommentState = result.state
-      const claimed: Array<[number, number]> = []
-
-      for (const { expr, pattern } of exprPatterns) {
-        pattern.lastIndex = 0
-        let match: RegExpExecArray | null
-        while ((match = pattern.exec(result.stripped)) !== null) {
-          const startCol = match.index + 1
-          const endCol = startCol + match[0].length
-          if (claimed.some(([s, e]) => startCol < e && endCol > s)) continue
-          claimed.push([startCol, endCol])
-          positions.push({ expr, line: lineNumber, startCol, endCol })
-          break
-        }
-      }
-    }
-
-    return { prefix, positions }
-  }, [isActive, isDebuggerVisible, debugVarKeySet, language, name, fbInstanceContext, editorMounted, modelVersion])
-
-  useEffect(() => {
-    if (!debugVarPositions || !editorRef.current) return
-
-    const { prefix, positions } = debugVarPositions
-    const decorations: monaco.editor.IModelDeltaDecoration[] = positions.map(({ expr, line, startCol, endCol }) => ({
-      range: new monaco.Range(line, startCol, line, endCol),
-      options: {
-        after: {
-          content: ` = ${debugBoolValues.get(prefix + expr) ?? debugNonBoolValues.get(prefix + expr) ?? '?'} `,
-          inlineClassName: 'debug-inline-value',
-        },
-      },
-    }))
-
-    const collection = editorRef.current.createDecorationsCollection(decorations)
-    return () => collection.clear()
-  }, [debugVarPositions, debugBoolValues, debugNonBoolValues])
-=======
   useStDebugDecorations({
     editorRef,
     monacoRef,
@@ -486,7 +409,6 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
     modelVersion,
     expectedUri: debugDecorationUri,
   })
->>>>>>> feature/execute-inline-st
 
   const variablesSuggestions = useCallback(
     (range: monaco.IRange) => {
