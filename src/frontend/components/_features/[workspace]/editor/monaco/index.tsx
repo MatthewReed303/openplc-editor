@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { PLCPou } from '../../../../../../middleware/shared/ports/types'
 import { useAI, useCapabilities, useEdgeAccountPort, useProject } from '../../../../../../middleware/shared/providers'
-import { useDebugBoolValuesMap, useDebugNonBoolValuesMap } from '../../../../../hooks/use-debug-value'
+import { useStDebugDecorations } from '../../../../../hooks/use-st-debug-decorations'
 import { registerAIInlineCompletions } from '../../../../../services/ai/inline-completions'
 import { getCppMemberCompletions, projectTypeNamePredicate } from '../../../../../services/cpp-scope'
 import { executeSaveActiveFile, executeSaveProject } from '../../../../../services/save-actions'
@@ -61,48 +61,9 @@ type SnippetController = {
   insert: (snippet: string, options?: unknown) => void
 }
 
-type BlockCommentState = false | 'paren' | 'slash'
-
-function stripLineComments(line: string, state: BlockCommentState): { stripped: string; state: BlockCommentState } {
-  const chars = [...line]
-  let i = 0
-  let s = state
-
-  while (i < chars.length) {
-    if (s) {
-      const endMarker = s === 'paren' ? ')' : '/'
-      if (chars[i] === '*' && chars[i + 1] === endMarker) {
-        chars[i] = ' '
-        chars[i + 1] = ' '
-        i += 2
-        s = false
-      } else {
-        chars[i] = ' '
-        i++
-      }
-    } else {
-      if (chars[i] === '/' && chars[i + 1] === '/') {
-        for (let j = i; j < chars.length; j++) chars[j] = ' '
-        break
-      }
-      if (chars[i] === '(' && chars[i + 1] === '*') {
-        chars[i] = ' '
-        chars[i + 1] = ' '
-        i += 2
-        s = 'paren'
-      } else if (chars[i] === '/' && chars[i + 1] === '*') {
-        chars[i] = ' '
-        chars[i + 1] = ' '
-        i += 2
-        s = 'slash'
-      } else {
-        i++
-      }
-    }
-  }
-
-  return { stripped: chars.join(''), state: s }
-}
+// ---------------------------------------------------------------------------
+// Module-level flag for initial theme application
+// ---------------------------------------------------------------------------
 
 let didApplyInitialTheme = false
 
@@ -440,6 +401,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
     return language === 'st' ? editorModelPath : monacoRef.current.Uri.parse(uniqueMonacoPath).toString()
   }, [editorMounted, language, editorModelPath, uniqueMonacoPath])
 
+<<<<<<< HEAD
   const debugVarPositions = useMemo(() => {
     // Active-tab-only: avoids every hidden multi-mounted editor re-scanning and decorating on each poll.
     if (!isActive) return null
@@ -515,6 +477,16 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
     const collection = editorRef.current.createDecorationsCollection(decorations)
     return () => collection.clear()
   }, [debugVarPositions, debugBoolValues, debugNonBoolValues])
+=======
+  useStDebugDecorations({
+    editorRef,
+    monacoRef,
+    prefix: fbInstanceContext ? `${fbInstanceContext.programName}:${fbInstanceContext.fbVariableName}.` : `${name}:`,
+    enabled: isActive && isDebuggerVisible && (language === 'st' || language === 'il'),
+    modelVersion,
+    expectedUri: debugDecorationUri,
+  })
+>>>>>>> feature/execute-inline-st
 
   const variablesSuggestions = useCallback(
     (range: monaco.IRange) => {
