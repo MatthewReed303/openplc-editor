@@ -1,16 +1,16 @@
 /**
  * `loadProject` hydrates the library pool, and does it FIRST.
  *
- * `handleOpenProjectResponse` reads `libraries.system` and restamps every
- * placed block against it inside the same action, so a pool hydrated afterwards
- * is a pool the restamp never saw — it returns `poolEmpty` and the project's
- * missing/outdated lists stay empty.
+ * `handleOpenProjectResponse` reads `libraries.system` and re-stamps every
+ * placed block against it inside the same action, and `setProjectLibraries`
+ * derives the enabled/missing lists from it. A pool hydrated afterwards is a
+ * pool neither of them saw.
  *
  * Ordering is the whole assertion. `jest-vi-shim.ts` already hydrates system
  * libraries for every spec in this repo, so a test that merely checks the pool
  * is populated passes whether or not `loadProject` does anything at all. The
- * store is mocked here for the same reason it is spied on elsewhere: its real
- * state is immer-frozen and cannot be instrumented in place.
+ * store is mocked rather than spied on because its real state is immer-frozen
+ * and cannot be instrumented in place.
  */
 
 import { loadProject } from '../project/load'
@@ -28,18 +28,21 @@ const record =
 
 let setSystemLibraries: jest.Mock
 let setBundledLibraryNames: jest.Mock
+let canEdit = true
+let isEphemeralProject = false
 
 jest.mock('@root/frontend/store', () => ({
   openPLCStoreBase: {
     getState: () => ({
       deviceActions: { setAvailableOptions: record('setAvailableOptions') },
       libraryActions: {
-        setSystemLibraries: setSystemLibraries,
-        setBundledLibraryNames: setBundledLibraryNames,
+        setSystemLibraries,
+        setBundledLibraryNames,
       },
       sharedWorkspaceActions: { handleOpenProjectResponse: record('handleOpenProjectResponse') },
       project: { meta: { name: 'demo' }, data: {} },
       projectActions: { getCompileReadyProjectData: () => ({}) },
+      workspace: { canEdit, isEphemeralProject },
       deviceDefinitions: {
         configuration: { deviceBoard: 'Uno', vendorScreenData: undefined, communicationPort: undefined },
       },
@@ -80,19 +83,25 @@ jest.mock('@root/frontend/utils/stlib-to-system-library', () => ({
 
 beforeEach(() => {
   calls.length = 0
+  canEdit = true
+  isEphemeralProject = false
   setSystemLibraries = jest.fn(record('setSystemLibraries'))
   setBundledLibraryNames = jest.fn(record('setBundledLibraryNames'))
 })
 
 describe('loadProject library hydration', () => {
-  it('sets the system libraries before opening the project', async () => {
+  it('sets the system libraries before opening the project, and the boards on both sides of it', async () => {
     await loadProject('/tmp/p')
 
+    // The boards land twice on purpose: once so the project opens against a
+    // resolved target, and once after so the migrations that read project
+    // state get to run.
     expect(calls).toEqual([
       'setAvailableOptions',
       'setSystemLibraries',
       'setBundledLibraryNames',
       'handleOpenProjectResponse',
+      'setAvailableOptions',
     ])
   })
 
@@ -115,5 +124,27 @@ describe('loadProject library hydration', () => {
       'warning: could not read the installed libraries: registry unreadable',
       'a parse warning',
     ])
+  })
+})
+
+describe('loadProject save guards', () => {
+  // `executeSaveProject` refuses on either of these and reports only through a
+  // toast, so a writing command that does not check them exits 0 having written
+  // nothing.
+  it('reports the workspace flags a writing command has to check', async () => {
+    const result = await loadProject('/tmp/p')
+
+    expect(result.success && result.project.canEdit).toBe(true)
+    expect(result.success && result.project.isEphemeral).toBe(false)
+  })
+
+  it('carries a read-only workspace through rather than hiding it', async () => {
+    canEdit = false
+    isEphemeralProject = true
+
+    const result = await loadProject('/tmp/p')
+
+    expect(result.success && result.project.canEdit).toBe(false)
+    expect(result.success && result.project.isEphemeral).toBe(true)
   })
 })
