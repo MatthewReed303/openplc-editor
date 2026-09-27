@@ -55,7 +55,7 @@ import type {
   UpdateUserParams,
   WhoAmIResult,
 } from '@root/middleware/shared/ports/runtime-port'
-import type { DebugConnectionConfig } from '@root/middleware/shared/ports/types'
+import type { DebugConnectionConfig, RtosStatsResult } from '@root/middleware/shared/ports/types'
 import type { PLCProjectData } from '@root/middleware/shared/ports/types'
 import type {
   Branch,
@@ -238,6 +238,11 @@ const rendererProcessBridge = {
     ipcRenderer.invoke('edge-account:sign-in', { email, password }),
   edgeAccountSignOut: (): Promise<void> => ipcRenderer.invoke('edge-account:sign-out'),
   edgeAccountIsSessionPersistent: (): Promise<boolean> => ipcRenderer.invoke('edge-account:is-session-persistent'),
+  /** A provider sign-in ran in the system browser and the main process now holds the session. */
+  onEdgeAccountSignedIn: (callback: () => void): (() => void) =>
+    subscribe('edge-account:signed-in', () => {
+      callback()
+    }),
   edgeProjectsListRecent: (limit: number): Promise<CloudProjectsResult> =>
     ipcRenderer.invoke('edge-projects:list-recent', limit),
   edgeProjectsListInFolder: (folderId: string): Promise<CloudProjectsResult> =>
@@ -664,6 +669,9 @@ const rendererProcessBridge = {
 
   deviceRefreshLicense: (request: DeviceLicenseRequest): Promise<DeviceLicenseReport> =>
     ipcRenderer.invoke('device:refresh-license', request),
+
+  deviceReadTaskStats: (resetWindow: boolean): Promise<RtosStatsResult> =>
+    ipcRenderer.invoke('device:read-task-stats', resetWindow),
 
   // Diagnostic trace of the device connection (candidate attempts, poll verdicts,
   // which connection served each command), mirrored into the editor console so it
