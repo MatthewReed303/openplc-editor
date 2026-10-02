@@ -13,6 +13,7 @@
  */
 
 import type { DevicePin } from '../../types/PLC/devices'
+import { buildArduinoCliCompileArgs } from '../../firmware/build-arduino-cli-args'
 import type { PLCProjectData } from '../../types/PLC/open-plc'
 import type {
   CompilerPlatformPort,
@@ -67,7 +68,6 @@ jest.mock('../steps/generate-confs', () => ({
   })),
 }))
 
-import { buildArduinoCliCompileArgs } from '../../firmware/build-arduino-cli-args'
 import { runProgramBuildPipeline } from '../../library/program-build-pipeline'
 import { isStrucppCompatibleRuntime } from '../../firmware/runtime-version-gate'
 import { generateRuntimeConfs } from '../steps/generate-confs'

@@ -15,6 +15,7 @@
 import { openPLCStoreBase } from '@root/frontend/store'
 import type { SystemLibrary } from '@root/middleware/shared/ports/library-types'
 import type { PLCDataType, PLCPou, PLCVariable } from '@root/middleware/shared/ports/types'
+import { readRtosSettings } from '@root/middleware/shared/utils/rtos'
 
 import { boolFlag, type ParsedArgs, stringFlag } from '../args'
 import { describeFbdBody } from '../describe/fbd'
@@ -80,6 +81,7 @@ export async function runDescribe(args: ParsedArgs, reporter: Reporter): Promise
   // the configuration alongside it would invite applying a partial spec with
   // `--prune` and deleting everything else.
   if (!onlyPou) {
+    const rtos = readRtosSettings(state.deviceDefinitions.configuration.vendorScreenData)
     spec.device = {
       board: loaded.project.board,
       ...(loaded.project.communicationPort ? { communicationPort: loaded.project.communicationPort } : {}),
@@ -89,6 +91,8 @@ export async function runDescribe(args: ParsedArgs, reporter: Reporter): Promise
       ...(state.deviceDefinitions.configuration.persistentStorage
         ? { persistentStorage: state.deviceDefinitions.configuration.persistentStorage }
         : {}),
+      // Only a switch someone set: the default is the board's, not the project's.
+      ...(rtos.chosen ? { rtos: { enabled: rtos.enabled } } : {}),
     }
     spec.libraries = (state.project.data.libraries ?? []).map((ref) => ({ name: ref.name, version: ref.version }))
     spec.globalVariableLists = (state.project.data.globalVariableLists ?? []).map((list) => ({

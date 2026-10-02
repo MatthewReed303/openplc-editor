@@ -22,6 +22,8 @@ import { elementNameCollision } from '@root/frontend/store/slices/shared/name-co
 import { isLegalIdentifier } from '@root/frontend/utils/keywords'
 import { baseTypeEnum } from '@root/middleware/shared/ports/plc-schemas'
 import type { PLCDataType, PLCVariable } from '@root/middleware/shared/ports/types'
+import { RTOS_SETTINGS_SECTION } from '@root/middleware/shared/utils/rtos'
+import { resolveTargetCapabilities } from '@root/middleware/shared/utils/target-capabilities'
 
 import { applyFbdBody } from './fbd'
 import { applyLadderBody } from './ladder'
@@ -68,7 +70,7 @@ export async function applySpec(
   const changes: PlannedChange[] = []
   const errors: string[] = []
 
-  applyDevice(spec, changes)
+  applyDevice(spec, changes, errors)
   applyLibraries(spec, changes, errors)
   applyDataTypes(spec, changes, errors)
   applyGlobalVariableLists(spec, changes, errors)
@@ -115,7 +117,7 @@ function specBindsLocation(spec: ApplySpec): boolean {
  * exists. A project whose board is never set compiles for whatever the scaffold
  * chose, which is rarely what was asked for.
  */
-function applyDevice(spec: ApplySpec, changes: PlannedChange[]): void {
+function applyDevice(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
   if (!spec.device) return
   const configuration: Record<string, string> = {}
   if (spec.device.board) configuration.deviceBoard = spec.device.board
@@ -131,8 +133,9 @@ function applyDevice(spec: ApplySpec, changes: PlannedChange[]): void {
   }
 
   // Before the bail-out below: a `device` section carrying nothing but
-  // `persistentStorage` still has work to do.
+  // `persistentStorage` or `rtos` still has work to do.
   applyPersistentStorage(spec, changes)
+  applyRtos(spec, changes, errors)
 
   const rest = { ...configuration }
   delete rest.deviceBoard
@@ -521,6 +524,26 @@ function applyPersistentStorage(spec: ApplySpec, changes: PlannedChange[]): void
     action: 'update',
     name: `persistentStorage = ${applied?.enabled ? `every ${applied.flushSeconds}s` : 'off'}`,
   })
+}
+
+/**
+ * The RTOS mode switch, written after the board is set: it lives in the board's
+ * own `vendorScreenData` bucket, which `setDeviceBoard` swaps. Refused for a
+ * board the catalogue knows has no RTOS mode, rather than saved where nothing
+ * reads it; a board the catalogue does not know is left to the build.
+ */
+function applyRtos(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+  const wanted = spec.device?.rtos
+  if (!wanted) return
+  const state = openPLCStoreBase.getState()
+  const board = state.deviceDefinitions.configuration.deviceBoard
+  const boardInfo = state.deviceAvailableOptions.availableBoards.get(board)
+  if (boardInfo && resolveTargetCapabilities(boardInfo).rtos === undefined) {
+    errors.push(`device.rtos: ${board} has no RTOS mode (its Arduino core has no RTOS the firmware runs on).`)
+    return
+  }
+  state.deviceActions.setVendorScreenData(RTOS_SETTINGS_SECTION, { enabled: wanted.enabled })
+  changes.push({ kind: 'device', action: 'update', name: `rtos = ${wanted.enabled ? 'on' : 'off'}` })
 }
 
 /**

@@ -83,4 +83,5 @@ export interface AcceleratorPort {
 
   // --- App lifecycle ---
   onQuitApp(callback: () => void): Unsubscribe
+  onRefresh(callback: () => void): Unsubscribe
 }

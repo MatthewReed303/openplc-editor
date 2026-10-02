@@ -126,8 +126,6 @@ describe('composeRuntimeV4Bundle', () => {
    * files are present, so this key set IS the enable state.  Assert the
    * whole set, not individual keys: an extra file switches a plugin on.
    */
-  // Keys only -- a bundle entry is a `BundleFile`, but which confs shipped is
-  // decided by the key set alone.
   const confKeys = (files: Record<string, unknown>) =>
     Object.keys(files)
       .filter((p) => p.startsWith('conf/'))

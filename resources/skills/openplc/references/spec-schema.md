@@ -29,6 +29,7 @@ whatever `create` chose.
 | `communicationPort` | Serial port, for a board flashed over USB.                                                                                                                                                                                                                                                                                  |
 | `runtimeIpAddress`  | Address of a runtime target.                                                                                                                                                                                                                                                                                                |
 | `persistentStorage` | `{ enabled, path?, flushSeconds? }` — where `retain` variables are kept. See below.                                                                                                                                                                                                                                         |
+| `rtos`              | `{ enabled }` — RTOS mode on a board whose core has an RTOS (ESP32, STM32 but the smallest, Pico, Mbed, Uno Q, Uno R4, SAMD): each task a thread of its own. On by default there; `false` builds the single scan loop. Refused for a board without one. See tasks[] below.                                                                 |
 
 ### device.persistentStorage
 
@@ -218,6 +219,36 @@ first. Leave it at 0 unless you have several tasks and a reason.
 
 An instance's `program` must name a POU of kind `program`; `apply` refuses a
 dangling reference rather than letting it surface as a compile error later.
+
+**On a board whose core has an RTOS each task is a thread of its own** (RTOS
+mode, the default; the Board Settings switch, or `device.rtos`, turns it off).
+The boards, and how many tasks each has room for:
+
+| Boards | Tasks at most |
+|---|---|
+| every ESP32, Nano 33 BLE, Nano RP2040 Connect, Giga, Uno Q, Ventuno Q, Pico / Pico W / Pico 2 / Pico 2 W | 8 |
+| STM32, all but the F1 and the Cortex-M0/M0+ families (Blackpill, Nucleo) | 4 |
+| Zero, MKR WiFi 1010, MKR Zero, Nano 33 IoT | 2 |
+| Uno R4 Minima / WiFi | 1 |
+
+That changes four things:
+
+- A block that waits (a network `connect()`, a long I/O call) holds up only its
+  own task. Put such blocks in a task of their own at a LOWER priority (a higher
+  number) than the task running the machine. On a one-task board it still holds
+  up the PLC.
+- `interval` must be a whole number of milliseconds (0.1 ms on the Uno Q and
+  Ventuno Q; `T#500us` is refused, or on the default the board falls back to
+  the single loop), and a board runs at most its number of tasks above.
+- Globals shared between tasks are safe to read and write. With a STruC++ that
+  has the global lock hooks, `count := count + 1` from two tasks is one locked
+  step; an older one can lose updates, and so can an update spread over several
+  statements. Give every global one writing task. A block instance declared as
+  a global (a TON) runs under its own lock for the whole call.
+- A C/C++ block that uses the network, I2C, SPI, CAN or a serial port takes that
+  bus's or port's lock around its driver calls (`openplc_net_lock`,
+  `openplc_i2c_lock`, `openplc_serial_lock(&port)`, ...; declared weak, see
+  docs/rtos-mode.md). OpenPLC's own blocks already do.
 
 ## Order
 

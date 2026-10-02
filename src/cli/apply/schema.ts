@@ -301,6 +301,13 @@ const deviceSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * RTOS mode, on a board whose core has an RTOS (ESP32, most STM32, the Pico,
+     * Mbed and Zephyr boards, the Uno R4, SAMD): each task a thread of its own.
+     * On by default there; `{ "enabled": false }` builds the single scan loop.
+     * Refused for a board without it.
+     */
+    rtos: z.object({ enabled: z.boolean() }).strict().optional(),
   })
   .strict()
 

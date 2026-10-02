@@ -134,13 +134,6 @@ export async function loadProject(projectPath: string): Promise<LoadProjectResul
     .getState()
     .deviceActions.setAvailableOptions({ availableBoards: await new HardwareModule().getAvailableBoards() })
 
-  // The library pool, BEFORE the project opens. `handleOpenProjectResponse`
-  // reads `libraries.system` and re-stamps every placed block against it in the
-  // same call, and `setProjectLibraries` derives the enabled/missing lists from
-  // it — both see an empty pool if this runs after. Mirrors `hydrateLibraries`
-  // in App.tsx, which is the renderer's equivalent.
-  const libraryWarnings = hydrateLibraries()
-
   // The SHARED singleton, not a private instance. Everything the editor's own
   // resolvers read comes off it — `buildDeviceResolverContext` reads the device
   // configuration and runtime connection from `useOpenPLCStore.getState()`, and
@@ -148,6 +141,13 @@ export async function loadProject(projectPath: string): Promise<LoadProjectResul
   // leave those resolvers looking at an empty one, and the CLI would have to
   // reimplement them. One project per process is the same assumption the editor
   // makes, and a CLI invocation is one project.
+  // The library pool, BEFORE the project opens. `handleOpenProjectResponse`
+  // reads `libraries.system` and re-stamps every placed block against it in the
+  // same call, and `setProjectLibraries` derives the enabled/missing lists from
+  // it — both see an empty pool if this runs after. Mirrors `hydrateLibraries`
+  // in App.tsx, which is the renderer's equivalent.
+  const libraryWarnings = hydrateLibraries()
+
   openPLCStoreBase.getState().sharedWorkspaceActions.handleOpenProjectResponse(parsed)
 
   // Re-apply the board list now that the project is in the store. One migration

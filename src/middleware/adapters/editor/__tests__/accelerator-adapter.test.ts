@@ -61,6 +61,7 @@ beforeEach(() => {
     switchPerspective: register('switchPerspective'),
     aboutModalAccelerator: register('about'),
     quitAppRequest: register('quitApp'),
+    refreshRequest: register('refresh'),
   } as unknown as typeof window.bridge
 
   adapter = createEditorAcceleratorAdapter()
@@ -165,6 +166,8 @@ describe('onExportProject', () => {
     expect(cb).not.toHaveBeenCalled()
   })
 })
+
+testAccelerator('onRefresh', 'refresh', 'refreshRequest')
 
 describe('onOpenRecent', () => {
   // The channel carries the PATH of the project to open, and nothing else.

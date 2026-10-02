@@ -35,6 +35,28 @@ either, and `check` reports it too.
 Local state that must survive between scans is an ordinary C++ variable at file
 scope — it does NOT go in `variables`, which is only the IEC interface.
 
+On a board in RTOS mode a block that uses the network, `Wire`, `SPI` or CAN
+shares it with the other tasks and OpenPLC's services: hold that bus's lock
+around the driver calls, declared weak so the code also builds without RTOS
+mode, and never across a wait of the block's own:
+
+```cpp
+extern "C" void openplc_i2c_lock(void) __attribute__((weak));
+extern "C" void openplc_i2c_unlock(void) __attribute__((weak));
+
+void loop() {
+  if (openplc_i2c_lock) openplc_i2c_lock();
+  Wire.requestFrom(0x48, 2);
+  // ...
+  if (openplc_i2c_unlock) openplc_i2c_unlock();
+}
+```
+
+`openplc_net_lock`, `openplc_spi_lock` and `openplc_can_lock` work the same way.
+A serial port has a lock of its own, `openplc_serial_lock(&port)` /
+`openplc_serial_unlock(&port)`, held for a whole exchange (a request and its
+reply), so blocks that share an RS485 line or a modem take turns.
+
 ## Python
 
 **A Python POU is a Function Block.** The editor offers no other type, so use
@@ -136,13 +158,15 @@ def block_loop():
     shared_count = shared_count + 1   # NOT safe if anything else writes it
 ```
 
-The same line is atomic in ST, LD, FBD, IL and C++, because those run inside the
-scan under the global's lock. So:
+The same line in ST, LD, FBD or IL is safe within one task, because it runs
+inside the scan. From two TASKS it is one locked step only with a STruC++ that
+has the global lock hooks; an older one can lose an update there, and an update
+spread over several statements always can. So:
 
 - **Give every global a single writer.** That case is exact.
 - **Read freely** — you may get a value one cycle old, never a corrupt one.
-- **Never accumulate into a shared global from Python.** Have each writer own a
-  variable and let an ST block add them up, where the addition is atomic.
+- **Never accumulate into a shared global from Python, or from two tasks.** Have
+  each writer own a variable and let one ST block add them up.
 - **Never use a global as a lock or semaphore** across the boundary.
 
 ### Function block instances

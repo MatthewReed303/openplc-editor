@@ -11,6 +11,7 @@ openplc-cli debug force <variable> <value>
 openplc-cli debug unforce <variable>
 openplc-cli debug start | stop
 openplc-cli debug watch | poll | unwatch
+openplc-cli debug stats [--reset]
 openplc-cli debug close --session <id> | --all
 ```
 
@@ -24,6 +25,19 @@ into the EDITOR's chart and is not needed here.
 Paths use a colon between the POU and the variable: `PlantLogic:levelPct`, and
 `Config0:gPump` for a resource global. Members and array elements use dots and
 brackets from there — `AnalogChain:counter.Cfg.Trend[0]`.
+
+## A board in RTOS mode
+
+`debug stats` shows each task's timing: period, releases, overruns (releases
+skipped because the task was still running), scan, cycle and latency times,
+stack left, and `STUCK <us>` for a task inside one scan for more than twice its
+period (20 ms at least). `--reset` starts a new window. A board running the
+single loop answers `not_supported`.
+
+A write or force of a variable whose task is stuck mid-scan answers *busy*
+(`The PLC is busy: ...`) until that scan ends: retry it. A global is written
+under its own lock and is busy only while a task holds it for more than 100 ms.
+Reads always answer; a stuck task's variables are read as they stand.
 
 ## Credentials
 
