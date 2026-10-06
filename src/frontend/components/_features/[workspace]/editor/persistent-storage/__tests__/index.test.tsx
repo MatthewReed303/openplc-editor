@@ -13,6 +13,13 @@ import { DEFAULT_RETAIN_FLUSH_SECONDS, RETAIN_MAX_FLUSH_SECONDS } from '@root/mi
 
 import { PersistentStorageEditor } from '../index'
 
+// The screen asks the target whether its store has a file location: runtime v4
+// does, Arduino firmware (NVS / EEPROM) does not. Runtime v4 unless a test says.
+let mockCaps = { retainStoreHasPath: true, retainDefaultFlushSeconds: DEFAULT_RETAIN_FLUSH_SECONDS }
+jest.mock('@root/frontend/hooks/use-target-capabilities', () => ({
+  useTargetCapabilities: () => mockCaps,
+}))
+
 /** Narrow, don't assert.
  *
  *  CLAUDE.md forbids type assertions, and the reason applies here: `as
@@ -43,6 +50,7 @@ function setSettings(value: { enabled: boolean; path: string; flushSeconds: numb
 
 beforeEach(() => {
   store = createTestStore()
+  mockCaps = { retainStoreHasPath: true, retainDefaultFlushSeconds: DEFAULT_RETAIN_FLUSH_SECONDS }
 })
 
 describe('PersistentStorageEditor', () => {
@@ -137,5 +145,25 @@ describe('PersistentStorageEditor', () => {
 
     expect(input(screen.getByLabelText(/file location/i)).disabled).toBe(true)
     expect(input(screen.getByLabelText(/save every/i)).disabled).toBe(true)
+  })
+  it('leaves the file location out for a store with no file (Arduino)', () => {
+    mockCaps = { retainStoreHasPath: false, retainDefaultFlushSeconds: 600 }
+    render(<PersistentStorageEditor />, { wrapper: createStoreWrapper(store) })
+    expect(screen.queryByLabelText('File location')).toBeNull()
+    expect(screen.getByLabelText('Save every')).toBeTruthy()
+  })
+
+  it('still writes the toggle and the period for a store with no file', () => {
+    mockCaps = { retainStoreHasPath: false, retainDefaultFlushSeconds: 600 }
+    render(<PersistentStorageEditor />, { wrapper: createStoreWrapper(store) })
+    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.change(screen.getByLabelText('Save every'), { target: { value: '30' } })
+    expect(settings()).toEqual({ enabled: true, path: '', flushSeconds: 30 })
+  })
+
+  it("shows the target's default period before one is set", () => {
+    mockCaps = { retainStoreHasPath: false, retainDefaultFlushSeconds: 600 }
+    render(<PersistentStorageEditor />, { wrapper: createStoreWrapper(store) })
+    expect(input(screen.getByLabelText('Save every')).value).toBe('600')
   })
 })

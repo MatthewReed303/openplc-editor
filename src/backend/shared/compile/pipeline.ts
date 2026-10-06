@@ -1171,6 +1171,8 @@ async function runCompilePipelineInner(
     ...(strucppResult.retainBlobSize !== null ? { retainBlobSize: strucppResult.retainBlobSize } : {}),
     resourceLibraryDepends: resourceLibraryDepends(libraryResources),
     ...(boardEntry.pinPull ? { pinPull: boardEntry.pinPull } : {}),
+    ...(persistentStorage !== undefined ? { persistentStorage } : {}),
+    targetHidesPersistentStorage: targetHidesPersistentStorage ?? false,
   })
 
   // A board reached only over Ethernet must never be handed an image with no
