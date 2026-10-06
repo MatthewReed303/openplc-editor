@@ -1,8 +1,15 @@
 import type { Node } from '@xyflow/react'
 
-import { openPLCStoreBase } from '../../../../index'
+import type { OpenPLCStore } from '../../../../index'
+import { createTestStore } from '../../../../testing'
 import { needsPositionRecovery } from '../../slice'
 import { buildLadderRung, type RungLogic } from '../build-rung'
+
+let store: OpenPLCStore
+
+beforeEach(() => {
+  store = createTestStore()
+})
 
 /**
  * The handoff, end to end: a rung built with no geometry goes through
@@ -18,8 +25,8 @@ const contact = (variable: string): RungLogic => ({ contact: { variable, variant
 const coil = (variable: string) => ({ coil: { variable, variant: 'default' as const } })
 
 function addAndRead(name: string, rungs: ReturnType<typeof buildLadderRung>[]) {
-  openPLCStoreBase.getState().ladderFlowActions.addLadderFlow({ name, updated: true, rungs } as never)
-  return openPLCStoreBase.getState().ladderFlows.find((flow) => flow.name === name)
+  store.getState().ladderFlowActions.addLadderFlow({ name, updated: true, rungs } as never)
+  return store.getState().ladderFlows.find((flow) => flow.name === name)
 }
 
 describe('buildLadderRung through addLadderFlow', () => {

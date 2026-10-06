@@ -6,7 +6,7 @@
  * CLI-authored rung is placed by exactly the code that places a hand-drawn one.
  */
 
-import { openPLCStoreBase } from '@root/frontend/store'
+import type { OpenPLCStore } from '@root/frontend/store'
 import { needsPositionRecovery } from '@root/frontend/store/slices/ladder/slice'
 import {
   buildLadderRung,
@@ -20,9 +20,9 @@ import type { Edge, Node } from '@xyflow/react'
 import { unresolvedHandles } from './handles'
 import type { SpecLadderBody, SpecLadderOutput } from './schema'
 
-export function applyLadderBody(pouName: string, body: SpecLadderBody): string[] {
+export function applyLadderBody(store: OpenPLCStore, pouName: string, body: SpecLadderBody): string[] {
   const errors: string[] = []
-  const state = openPLCStoreBase.getState()
+  const state = store.getState()
 
   // Mirrors the editor's own lookup (`ladder/utils/utils.ts`): the POU's own
   // variables, matched case-insensitively, and a contact or coil will not take a
@@ -38,7 +38,7 @@ export function applyLadderBody(pouName: string, body: SpecLadderBody): string[]
   const rungs = body.rungs.map((spec, index) => {
     const outputs: RungOutput[] = []
     for (const output of spec.outputs) {
-      const built = toOutput(pouName, output, errors)
+      const built = toOutput(store, pouName, output, errors)
       if (built) outputs.push(built)
     }
     return buildLadderRung({
@@ -58,12 +58,12 @@ export function applyLadderBody(pouName: string, body: SpecLadderBody): string[]
   // Naming the pins comes AFTER the flow is added, because `addLadderFlow` is
   // what creates one variable element per block pin. Creating them here too
   // would leave the rung with two elements on every pin.
-  nameBlockPins(pouName, body, errors, resolveVariable)
+  nameBlockPins(store, pouName, body, errors, resolveVariable)
 
   // The solver runs inside a try with guards that silently return the rung
   // unchanged. The LD walker sorts sinks by y-position, so an unrecovered rung
   // does not look broken — it transpiles to the wrong statement order.
-  const flow = openPLCStoreBase.getState().ladderFlows.find((entry) => entry.name === pouName)
+  const flow = store.getState().ladderFlows.find((entry) => entry.name === pouName)
   for (const rung of flow?.rungs ?? []) {
     if (needsPositionRecovery(rung)) {
       errors.push(`POU "${pouName}" rung "${rung.id}": the editor could not lay this rung out.`)
@@ -85,13 +85,13 @@ export function applyLadderBody(pouName: string, body: SpecLadderBody): string[]
  * elements carry `data.block.handleId`, which is the pin's name, so the one to
  * name is found by that rather than by position.
  */
-function nameBlockPins(
+function nameBlockPins(store: OpenPLCStore, 
   pouName: string,
   body: SpecLadderBody,
   errors: string[],
   resolveVariable: RungVariableResolver,
 ): void {
-  const flow = openPLCStoreBase.getState().ladderFlows.find((entry) => entry.name === pouName)
+  const flow = store.getState().ladderFlows.find((entry) => entry.name === pouName)
   const updates: Array<{ node: Node; nodeId: string; rungId: string; editorName: string }> = []
   /**
    * What the GUI records on the BLOCK when a pin's variable is named
@@ -173,13 +173,13 @@ function nameBlockPins(
     })
   }
 
-  if (updates.length > 0) openPLCStoreBase.getState().ladderFlowActions.updateNodes(updates)
+  if (updates.length > 0) store.getState().ladderFlowActions.updateNodes(updates)
 }
 
-function toOutput(pouName: string, output: SpecLadderOutput, errors: string[]): RungOutput | null {
+function toOutput(store: OpenPLCStore, pouName: string, output: SpecLadderOutput, errors: string[]): RungOutput | null {
   if ('coil' in output) return { coil: output.coil }
 
-  const state = openPLCStoreBase.getState()
+  const state = store.getState()
   const built = buildBlockVariant({
     blockRef: output.block.call,
     systemLibraries: state.libraries.system,

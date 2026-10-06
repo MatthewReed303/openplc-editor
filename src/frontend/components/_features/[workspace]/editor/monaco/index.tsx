@@ -12,7 +12,7 @@ import { registerAIInlineCompletions } from '../../../../../services/ai/inline-c
 import { getCppMemberCompletions, projectTypeNamePredicate } from '../../../../../services/cpp-scope'
 import { executeSaveActiveFile, executeSaveProject } from '../../../../../services/save-actions'
 import { pouUri, splitExpression } from '../../../../../services/st-lsp'
-import { openPLCStoreBase, useOpenPLCStore } from '../../../../../store'
+import { useOpenPLCStore, useOpenPLCStoreApi } from '../../../../../store'
 import { applyAcceptedHunks, computeHunks } from '../../../../../utils/ai-diff-review'
 import { memberChainBefore } from '../../../../../utils/cpp/member-chain'
 import { getExtensionFromLanguage, getFolderFromPouType } from '../../../../../utils/PLC/pou-file-extensions'
@@ -81,6 +81,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
   const aiPort = useAI()
   const edgeAccount = useEdgeAccountPort()
   const projectPort = useProject()
+  const store = useOpenPLCStoreApi()
 
   const {
     editor,
@@ -124,7 +125,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
   const [contentToDrop, setContentToDrop] = useState<PouToText>()
   const [newName, setNewName] = useState<string>('')
   const [localText, setLocalText] = useState<string>(() => {
-    const pou = openPLCStoreBase.getState().project.data.pous.find((p) => p.name === name)
+    const pou = store.getState().project.data.pous.find((p) => p.name === name)
     return typeof pou?.body.value === 'string' ? pou.body.value : ''
   })
   const watchedFilePathRef = useRef<string | null>(null)
@@ -139,10 +140,10 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
 
   // Sync local text when POU identity changes
   useEffect(() => {
-    const currentPou = openPLCStoreBase.getState().project.data.pous.find((p) => p.name === name)
+    const currentPou = store.getState().project.data.pous.find((p) => p.name === name)
     const newContent = typeof currentPou?.body.value === 'string' ? currentPou.body.value : ''
     setLocalText(newContent)
-  }, [name, language, path])
+  }, [name, language, path, store])
 
   // Also sync when pous changes in store (for external updates)
   useEffect(() => {
@@ -169,7 +170,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
     }
 
     const handleKeepHunk = (hunkId: string) => {
-      const state = openPLCStoreBase.getState()
+      const state = store.getState()
       const current = state.ai.pendingDiffs[name]
       if (!current) return
       const nextAccepted = current.acceptedHunks.filter((id) => id !== hunkId)
@@ -181,7 +182,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
     }
 
     const handleUndoHunk = (hunkId: string) => {
-      const state = openPLCStoreBase.getState()
+      const state = store.getState()
       const current = state.ai.pendingDiffs[name]
       if (!current) return
 
@@ -223,6 +224,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
     clearPendingDiff,
     updatePendingDiff,
     updatePendingDiffAcceptedHunks,
+    store,
   ])
 
   // Every multi-mounted MonacoEditor subscribes to `searchQuery`, but only the active tab reveals a match.
@@ -275,7 +277,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
   useEffect(() => {
     if (!capabilities.hasFileWatcher) return
 
-    const currentProjectPath = openPLCStoreBase.getState().project.meta.path
+    const currentProjectPath = store.getState().project.meta.path
     if (!currentProjectPath || !pou) return
 
     if (!projectPort.watchFile || !projectPort.onFileExternalChange) return
@@ -290,7 +292,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
     const handleExternalChange = (filePath: string) => {
       if (filePath !== watchedFilePathRef.current) return
 
-      const isSaved = openPLCStoreBase.getState().fileActions.getSavedState({ name })
+      const isSaved = store.getState().fileActions.getSavedState({ name })
       if (isSaved) {
         void reloadFromDisk()
       }
@@ -327,7 +329,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
         watchedFilePathRef.current = null
       }
     }
-  }, [pou?.pouType, name, language, capabilities.hasFileWatcher])
+  }, [pou?.pouType, name, language, capabilities.hasFileWatcher, store])
 
   // onMount only fires once, so onDidChangeModel detects later model switches (tab changes
   // with keepCurrentModel) and bumps modelVersion to trigger debugVarPositions recomputation.
@@ -563,7 +565,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
               data: { pous: currentPous, dataTypes: currentDataTypes },
             },
             libraries: currentLibraries,
-          } = openPLCStoreBase.getState()
+          } = store.getState()
           const members = await getCppMemberCompletions(
             name,
             anchor,
@@ -588,7 +590,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
         const stdLibSuggestions = cppStandardLibraryCompletion({ range }).suggestions
         const snippetSuggestions = cppSnippetsCompletion({ range }).suggestions
 
-        const boardInfo = openPLCStoreBase.getState().deviceAvailableOptions.availableBoards.get(deviceBoard)
+        const boardInfo = store.getState().deviceAvailableOptions.availableBoards.get(deviceBoard)
         const offerArduinoApi = resolveTargetCapabilities(boardInfo).arduinoApiCompletions
         const arduinoSuggestions = offerArduinoApi ? arduinoApiCompletion({ range }).suggestions : []
 
@@ -614,7 +616,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
       completionDisposable.dispose()
       signatureHelpDisposable.dispose()
     }
-  }, [language, deviceBoard, pouVariables, name])
+  }, [language, deviceBoard, pouVariables, name, store])
 
   const aiState = useOpenPLCStore().ai
 
@@ -629,7 +631,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
     const modelUri = editorRef.current?.getModel()?.uri
     if (!modelUri) return
 
-    const registration = registerAIInlineCompletions(aiPort, {
+    const registration = registerAIInlineCompletions(store, aiPort, {
       monacoInstance: monaco,
       modelUri,
       pouName: name,
@@ -649,6 +651,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
     capabilities.hasAIAssistant,
     aiPort,
     edgeAccount,
+    store,
   ])
 
   function handleEditorBeforeMount(monacoInstance: typeof monaco) {
@@ -687,7 +690,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
 
     const model = editorInstance.getModel()
     if (model) {
-      const storePou = openPLCStoreBase.getState().project.data.pous.find((p) => p.name === name)
+      const storePou = store.getState().project.data.pous.find((p) => p.name === name)
       const storeBodyValue = typeof storePou?.body.value === 'string' ? storePou.body.value : ''
       if (model.getValue() !== storeBodyValue) {
         isSyncingModelRef.current = true
@@ -700,14 +703,14 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
     focusDisposables.current.onBlur?.dispose()
 
     focusDisposables.current.onFocus = editorInstance.onDidFocusEditorText(() => {
-      openPLCStoreBase.getState().editorActions.setMonacoFocused(true)
+      store.getState().editorActions.setMonacoFocused(true)
     })
 
     focusDisposables.current.onBlur = editorInstance.onDidBlurEditorText(() => {
-      openPLCStoreBase.getState().editorActions.setMonacoFocused(false)
+      store.getState().editorActions.setMonacoFocused(false)
     })
 
-    const isDark = openPLCStoreBase.getState().workspace.systemConfigs.shouldUseDarkMode
+    const isDark = store.getState().workspace.systemConfigs.shouldUseDarkMode
     if (!didApplyInitialTheme) {
       applyThemeNow(monacoInstance, isDark)
       didApplyInitialTheme = true
@@ -717,13 +720,13 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
 
     if (capabilities.hasFileWatcher) {
       void (async () => {
-        const isSaved = openPLCStoreBase.getState().fileActions.getSavedState({ name })
+        const isSaved = store.getState().fileActions.getSavedState({ name })
         if (!isSaved) return
 
-        const currentPou = openPLCStoreBase.getState().project.data.pous.find((p) => p.name === name)
+        const currentPou = store.getState().project.data.pous.find((p) => p.name === name)
         if (!currentPou) return
 
-        const currentProjectPath = openPLCStoreBase.getState().project.meta.path
+        const currentProjectPath = store.getState().project.meta.path
         if (!currentProjectPath) return
 
         try {
@@ -780,7 +783,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
     if (capabilities.hasPythonLSP && language === 'python' && pou) {
       injectPythonTemplateIfNeeded(editorInstance, pou, name)
       // Hands the LSP the POU's variables so Pyright doesn't flag every IEC I/O reference as undefined.
-      initPythonLSP(monacoInstance)
+      initPythonLSP(store, monacoInstance)
         .then(() =>
           setupPythonLSPForEditor(editorInstance, {
             pouName: name,
@@ -798,16 +801,16 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
     }
 
     editorInstance.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS, () => {
-      if (openPLCStoreBase.getState().workspace.editingState !== 'save-request') {
-        void executeSaveActiveFile(projectPort, capabilities)
+      if (store.getState().workspace.editingState !== 'save-request') {
+        void executeSaveActiveFile(store, projectPort, capabilities)
       }
     })
 
     editorInstance.addCommand(
       monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyMod.Shift | monacoInstance.KeyCode.KeyS,
       () => {
-        if (openPLCStoreBase.getState().workspace.editingState !== 'save-request') {
-          void executeSaveProject(projectPort, capabilities)
+        if (store.getState().workspace.editingState !== 'save-request') {
+          void executeSaveProject(store, projectPort, capabilities)
         }
       },
     )
@@ -816,7 +819,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
       editorInstance.addCommand(
         monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyMod.Shift | monacoInstance.KeyCode.KeyL,
         () => {
-          const aiActions = openPLCStoreBase.getState().aiActions
+          const aiActions = store.getState().aiActions
           aiActions.toggleChat()
         },
       )
@@ -840,7 +843,7 @@ const MonacoEditor = (props: monacoEditorProps): ReturnType<typeof PrimitiveEdit
       ? (e: Event) => {
           const code = (e as CustomEvent<string>).detail
           if (!code) return
-          const currentEditorName = openPLCStoreBase.getState().editor.meta.name
+          const currentEditorName = store.getState().editor.meta.name
           if (currentEditorName !== name) return
           const position = editorInstance.getPosition()
           if (!position) return

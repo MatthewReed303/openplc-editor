@@ -25,6 +25,8 @@ function baseInput(overrides: Partial<ComposeRuntimeV4BundleInput> = {}): Compos
       s7Comm: null,
       opcUa: null,
       ethercat: null,
+      ethercatBusconfig: null,
+      ethercatIomapping: null,
     },
     libraryResources: [],
     ...overrides,
@@ -141,6 +143,17 @@ describe('composeRuntimeV4Bundle', () => {
     expect(files['conf/ethercat.json']).toBe('{"masters":[]}')
   })
 
+  it('omits each conf/*.json that is null (project does not use that protocol)', () => {
+    const files = composeRuntimeV4Bundle(baseInput())
+    expect('conf/modbus_slave.json' in files).toBe(false)
+    expect('conf/modbus_master.json' in files).toBe(false)
+    expect('conf/s7comm.json' in files).toBe(false)
+    expect('conf/opcua.json' in files).toBe(false)
+    expect('conf/ethercat.json' in files).toBe(false)
+    expect('conf/ethercat_busconfig.json' in files).toBe(false)
+    expect('conf/ethercat_iomapping.json' in files).toBe(false)
+  })
+
   it('writes only modbus_slave.json when a Modbus server is enabled', () => {
     const files = composeRuntimeV4Bundle(baseInput({ confs: { ...baseInput().confs, modbusSlave: '{"slaves":[]}' } }))
     expect(confKeys(files)).toEqual(['conf/modbus_slave.json'])
@@ -154,7 +167,9 @@ describe('composeRuntimeV4Bundle', () => {
           modbusMaster: '{"masters":[]}',
           s7Comm: '{"servers":[]}',
           opcUa: '{"endpoints":[]}',
-          ethercat: '{"masters":[]}',
+          ethercat: null,
+          ethercatBusconfig: '[{"name":"bus"}]',
+          ethercatIomapping: '{"version":1,"masters":[]}',
         },
       }),
     )
@@ -162,14 +177,27 @@ describe('composeRuntimeV4Bundle', () => {
     expect(files['conf/modbus_master.json']).toBe('{"masters":[]}')
     expect(files['conf/s7comm.json']).toBe('{"servers":[]}')
     expect(files['conf/opcua.json']).toBe('{"endpoints":[]}')
-    expect(files['conf/ethercat.json']).toBe('{"masters":[]}')
+    expect(files['conf/ethercat_busconfig.json']).toBe('[{"name":"bus"}]')
+    expect(files['conf/ethercat_iomapping.json']).toBe('{"version":1,"masters":[]}')
     expect(confKeys(files)).toEqual([
-      'conf/ethercat.json',
+      'conf/ethercat_busconfig.json',
+      'conf/ethercat_iomapping.json',
       'conf/modbus_master.json',
       'conf/modbus_slave.json',
       'conf/opcua.json',
       'conf/s7comm.json',
     ])
+  })
+
+  it('writes the legacy conf/ethercat.json when given, even empty, and no split files', () => {
+    const confs = { ...baseInput().confs }
+    expect(composeRuntimeV4Bundle(baseInput({ confs: { ...confs, ethercat: '[{"name":"bus"}]' } }))).toMatchObject({
+      'conf/ethercat.json': '[{"name":"bus"}]',
+    })
+    const files = composeRuntimeV4Bundle(baseInput({ confs: { ...confs, ethercat: '' } }))
+    expect(files['conf/ethercat.json']).toBe('')
+    expect('conf/ethercat_busconfig.json' in files).toBe(false)
+    expect('conf/ethercat_iomapping.json' in files).toBe(false)
   })
 
   it('produces the file set runtime compile.sh check_required_files asserts', () => {

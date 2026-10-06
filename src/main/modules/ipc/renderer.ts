@@ -162,6 +162,8 @@ const rendererProcessBridge = {
   saveProjectAccelerator: (callback: IpcRendererCallbacks) => subscribe('project:save-accelerator', callback),
   saveProjectAsAccelerator: (callback: IpcRendererCallbacks) => subscribe('project:save-as-accelerator', callback),
   retrieveProjectAccelerator: (callback: IpcRendererCallbacks) => subscribe('project:retrieve-accelerator', callback),
+  importPlcopenAccelerator: (callback: IpcRendererCallbacks) =>
+    subscribe('project:import-plcopen-accelerator', callback),
   printAccelerator: (callback: IpcRendererCallbacks) => subscribe('project:print-accelerator', callback),
   pageSetupAccelerator: (callback: IpcRendererCallbacks) => subscribe('project:page-setup-accelerator', callback),
   switchPerspective: (callback: IpcRendererCallbacks) =>
@@ -510,7 +512,6 @@ const rendererProcessBridge = {
       message: string
     }>,
   exportProjectRequest: (callback: IpcRendererCallbacks) => subscribe('compiler:export-project-request', callback),
-  importProjectRequest: (callback: IpcRendererCallbacks) => subscribe('project:import-plcopen-request', callback),
   generateCFilesRequest: (pathToStProgram: string, callback: (args: CompilerPortMessage) => void) => {
     const { port1: rendererProcessPort, port2: mainProcessPort } = new MessageChannel()
     ipcRenderer.postMessage('compiler:generate-c-files', pathToStProgram, [mainProcessPort])

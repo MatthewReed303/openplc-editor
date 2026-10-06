@@ -17,7 +17,7 @@
  * the second entry updates the first.
  */
 
-import { openPLCStoreBase } from '@root/frontend/store'
+import { createTestStore } from '@root/frontend/store/testing'
 
 // The FBD body applier reaches the FBD component modules, which do not load
 // under jest. Nothing here applies an FBD body.
@@ -26,12 +26,15 @@ jest.mock('../apply/fbd', () => ({ applyFbdBody: () => [] }))
 import { applySpec } from '../apply/plan'
 import type { ApplySpec } from '../apply/schema'
 
+// One store for the file, as the process singleton was.
+const store = createTestStore()
+
 const BOOL = { definition: 'base-type' as const, value: 'BOOL' }
 
 const apply = (spec: Partial<ApplySpec>, prune = false) =>
-  applySpec({ specVersion: 1, ...spec } as ApplySpec, { prune, projectPath: '/does/not/matter' })
+  applySpec(store, { specVersion: 1, ...spec } as ApplySpec, { prune, projectPath: '/does/not/matter' })
 
-const globalsIn = () => openPLCStoreBase.getState().project.data.configurations.resource.globalVariables
+const globalsIn = () => store.getState().project.data.configurations.resource.globalVariables
 
 describe('a name another element already owns', () => {
   it('reports it instead of accepting a renamed variable', async () => {

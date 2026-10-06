@@ -40,6 +40,9 @@ export function describeProtocolConfs(
       })),
       debugMapContent,
       log,
+      // `check` talks to no device, so the runtime version is unknown, as for
+      // a compile with no target: the legacy EtherCAT file is what is reported.
+      runtimeVersion: null,
     })
   } catch (error) {
     // OPC-UA and EtherCAT both abort the compile from here rather than emitting

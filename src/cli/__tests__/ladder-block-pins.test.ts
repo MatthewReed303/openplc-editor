@@ -8,10 +8,13 @@
  * compiled; only the generated ST showed it.
  */
 
-import { openPLCStoreBase } from '@root/frontend/store'
+import { createTestStore } from '@root/frontend/store/testing'
 
 import { applyLadderBody } from '../apply/ladder'
 import type { SpecLadderBody } from '../apply/schema'
+
+// One store for the file, as the process singleton was.
+const store = createTestStore()
 
 const TON = 'system/iec-standard-fb/TON'
 
@@ -36,13 +39,13 @@ const body: SpecLadderBody = {
 
 describe('applyLadderBody — a pin name shared by two blocks', () => {
   it('gives each block the variable the spec asked for', () => {
-    const state = openPLCStoreBase.getState()
+    const state = store.getState()
     state.pouActions.create({ name: 'Timers', type: 'program', language: 'ld' } as never)
 
-    const errors = applyLadderBody('Timers', body)
+    const errors = applyLadderBody(store, 'Timers', body)
     expect(errors).toEqual([])
 
-    const flow = openPLCStoreBase.getState().ladderFlows.find((entry) => entry.name === 'Timers')
+    const flow = store.getState().ladderFlows.find((entry) => entry.name === 'Timers')
 
     /** Every `PT` element in a rung, in the order its owning block was placed. */
     const presetsIn = (rung: number) => {
@@ -73,10 +76,10 @@ describe('applyLadderBody — a pin name shared by two blocks', () => {
  */
 describe('applyLadderBody — the connection recorded on the block', () => {
   it('records each named pin, so the editor knows the pin shows its own value', () => {
-    const state = openPLCStoreBase.getState()
+    const state = store.getState()
     state.pouActions.create({ name: 'Recorded', type: 'program', language: 'ld' } as never)
 
-    const errors = applyLadderBody('Recorded', {
+    const errors = applyLadderBody(store, 'Recorded', {
       rungs: [
         {
           logic: { contact: { variable: 'A', variant: 'default' } },
@@ -86,7 +89,7 @@ describe('applyLadderBody — the connection recorded on the block', () => {
     } as SpecLadderBody)
     expect(errors).toEqual([])
 
-    const flow = openPLCStoreBase.getState().ladderFlows.find((entry) => entry.name === 'Recorded')
+    const flow = store.getState().ladderFlows.find((entry) => entry.name === 'Recorded')
     const block = (flow?.rungs[0].nodes ?? []).find((node) => node.type === 'block')
     const recorded = (block?.data as { connectedVariables?: Array<{ handleId: string; type: string }> })
       .connectedVariables

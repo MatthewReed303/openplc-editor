@@ -1,10 +1,20 @@
-import { render, screen } from '@testing-library/react'
+import { render as rtlRender, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import userEvent from '@testing-library/user-event'
 
-import { useOpenPLCStore } from '@root/frontend/store'
+import type { OpenPLCStore } from '@root/frontend/store'
+import { createStoreWrapper, createTestStore } from '@root/frontend/store/testing'
 import type { InstalledLibrary } from '@root/middleware/shared/ports/library-types'
 
 import { ProjectLibrariesTab } from '../project-libraries-tab'
+
+let store: OpenPLCStore
+
+beforeEach(() => {
+  store = createTestStore()
+})
+
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: createStoreWrapper(store) })
 
 const row = (over: Partial<InstalledLibrary> = {}): InstalledLibrary => ({
   name: 'libtest-basic',
@@ -17,7 +27,7 @@ const row = (over: Partial<InstalledLibrary> = {}): InstalledLibrary => ({
 })
 
 function seed({ pinned, outdated = true }: { pinned: string; outdated?: boolean }) {
-  useOpenPLCStore.setState((state) => ({
+  store.setState((state) => ({
     ...state,
     project: {
       ...state.project,
@@ -44,7 +54,7 @@ describe('ProjectLibrariesTab', () => {
 
     await user.click(screen.getByRole('button', { name: /newer version installed/i }))
 
-    expect(useOpenPLCStore.getState().modals['library-updates']?.open).toBe(true)
+    expect(store.getState().modals['library-updates']?.open).toBe(true)
   })
 
   it('says nothing about updates when the project is on the newest', () => {
@@ -63,7 +73,7 @@ describe('ProjectLibrariesTab', () => {
 
   it('shows how many versions are available on a library not yet added', () => {
     seed({ pinned: '0.1.0', outdated: false })
-    useOpenPLCStore.setState((state) => ({ ...state, enabledLibraries: [] }))
+    store.setState((state) => ({ ...state, enabledLibraries: [] }))
     render(<ProjectLibrariesTab installed={[row()]} />)
 
     expect(screen.getByText(/2 versions/)).toBeTruthy()

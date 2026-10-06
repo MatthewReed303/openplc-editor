@@ -8,7 +8,7 @@
  */
 
 import { openPackageManagerTab } from '@root/frontend/services/open-package-manager-tab'
-import { useOpenPLCStore } from '@root/frontend/store'
+import { useOpenPLCStore, useOpenPLCStoreApi } from '@root/frontend/store'
 import { cn } from '@root/frontend/utils/cn'
 import type { LibraryVerifyTarget } from '@root/middleware/shared/ports/library-build-port'
 import { useCapabilities } from '@root/middleware/shared/providers'
@@ -60,6 +60,7 @@ const MODE_OPTIONS: ModeOption[] = [
 ]
 
 const VerifyTargetTab = ({ target, onChange, manifestError }: VerifyTargetTabProps) => {
+  const store = useOpenPLCStoreApi()
   const availableBoards = useOpenPLCStore((s) => s.deviceAvailableOptions.availableBoards)
   const hasPackageManager = useCapabilities().hasPackageManager
   const [coreFilter, setCoreFilter] = useState('')
@@ -224,7 +225,7 @@ const VerifyTargetTab = ({ target, onChange, manifestError }: VerifyTargetTabPro
           {hasPackageManager && (
             <button
               type='button'
-              onClick={openPackageManagerTab}
+              onClick={() => openPackageManagerTab(store)}
               disabled={coreCardDisabled}
               className='shrink-0 self-start font-caption text-cp-xs font-medium text-brand hover:underline disabled:cursor-not-allowed disabled:no-underline'
             >

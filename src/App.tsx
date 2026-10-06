@@ -22,6 +22,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import pyrightWorkerUrl from 'browser-basedpyright/dist/pyright.worker.js?url'
 import { useCallback, useEffect, useRef } from 'react'
 
+import { appStore, editorPorts } from './composition-root'
 import { AIChatPanel } from './frontend/components/_features/[workspace]/ai-chat'
 import { AcuExhaustionModal } from './frontend/components/_features/[workspace]/ai-settings-panel'
 import { setPythonLspWorkerUrl } from './frontend/components/_features/[workspace]/editor/monaco/python-lsp'
@@ -31,13 +32,13 @@ import { WorkspaceScreen } from './frontend/screens/workspace-screen'
 import { trackAcuExhausted, trackUpgradeCtaClicked } from './frontend/services/ai/telemetry'
 import { configureSaveResume } from './frontend/services/resume-save-after-sign-in'
 import { bootStLsp } from './frontend/services/st-lsp/boot'
-import { openPLCStoreBase, useOpenPLCStore } from './frontend/store'
+import { OpenPLCStoreProvider, useOpenPLCStore } from './frontend/store'
 import { stlibsToSystemLibraries } from './frontend/utils/stlib-to-system-library'
 import { listenForProviderSignIns } from './middleware/adapters/editor/edge-account-adapter'
 import { getEdgeWebUrl } from './middleware/adapters/editor/system-adapter'
 import { transpileProjectStInProcess } from './middleware/adapters/editor/transpile-project-st'
 import { setMenuProjectOpen } from './middleware/adapters/editor/window-adapter'
-import { editorPorts, packageUpdateNotifier, setProjectPath, setRuntimeIpAddress } from './middleware/editor-platform'
+import { packageUpdateNotifier, setProjectPath, setRuntimeIpAddress } from './middleware/editor-platform'
 import { ExtensionPanelProvider, PlatformProvider } from './middleware/shared/providers'
 
 /**
@@ -60,7 +61,7 @@ const hydrateLibraries = () => {
   // and the manager stay in sync.
   Promise.all([editorPorts.library.loadAll(), editorPorts.library.listInstalled()])
     .then(([archives, installed]) => {
-      const actions = openPLCStoreBase.getState().libraryActions
+      const actions = appStore.getState().libraryActions
       actions.setSystemLibraries(stlibsToSystemLibraries(archives))
       actions.setBundledLibraryNames(installed.filter((l) => l.bundled).map((l) => l.name))
     })
@@ -79,7 +80,7 @@ editorPorts.library.onLibrariesChanged(() => hydrateLibraries())
 // library opens reporting it missing; only a restart fixed it. Re-reading is
 // enough on its own: `setSystemLibraries` derives the enabled, missing and
 // outdated lists from the project's own refs each time it runs.
-openPLCStoreBase.subscribe(
+appStore.subscribe(
   (state) => state.project.meta.path,
   () => hydrateLibraries(),
 )
@@ -103,7 +104,7 @@ setPythonLspWorkerUrl(pyrightWorkerUrl)
 // Seed before the first render so the chat entry point and inline completions see the real
 // consent state instead of the store's conservative default flipping a frame later.
 if (editorPorts.ai) {
-  const { setAIEnabled, setAIConsented } = openPLCStoreBase.getState().aiActions
+  const { setAIEnabled, setAIConsented } = appStore.getState().aiActions
   setAIEnabled(editorPorts.ai.isFeatureEnabled)
   setAIConsented(editorPorts.ai.hasUserConsented)
 }
@@ -209,10 +210,10 @@ const AiBillingNotice = () => {
 // to avoid pulling its top-level side effects into modules that
 // only need the boot wrapper.
 void import('monaco-editor').then((monaco) => {
-  bootStLsp(editorPorts, monaco)
+  bootStLsp(appStore, editorPorts, monaco)
 })
 
-export default function App() {
+function AppContent() {
   const {
     project: {
       meta: { path },
@@ -240,5 +241,13 @@ export default function App() {
         <AppLayout>{path === '' ? <StartScreen /> : <WorkspaceScreen />}</AppLayout>
       </ExtensionPanelProvider>
     </PlatformProvider>
+  )
+}
+
+export default function App() {
+  return (
+    <OpenPLCStoreProvider store={appStore}>
+      <AppContent />
+    </OpenPLCStoreProvider>
   )
 }

@@ -17,7 +17,7 @@
  * takes a declarative document rather than a sequence of commands.
  */
 
-import { openPLCStoreBase } from '@root/frontend/store'
+import type { OpenPLCStore } from '@root/frontend/store'
 import { elementNameCollision } from '@root/frontend/store/slices/shared/name-collision'
 import { isLegalIdentifier } from '@root/frontend/utils/keywords'
 import { baseTypeEnum } from '@root/middleware/shared/ports/plc-schemas'
@@ -54,7 +54,7 @@ export interface ApplyOutcome {
   errors: string[]
 }
 
-type Store = ReturnType<typeof openPLCStoreBase.getState>
+type StoreState = ReturnType<OpenPLCStore['getState']>
 
 /** Languages whose body is a plain string. */
 const TEXTUAL = new Set(['st', 'il', 'python', 'cpp'])
@@ -63,38 +63,38 @@ const TEXTUAL = new Set(['st', 'il', 'python', 'cpp'])
  * `projectPath` is needed only by the EtherCAT section, which reads the
  * project's own ESI repository off disk — which is also why this is async.
  */
-export async function applySpec(
+export async function applySpec(store: OpenPLCStore, 
   spec: ApplySpec,
   options: { prune: boolean; projectPath: string },
 ): Promise<ApplyOutcome> {
   const changes: PlannedChange[] = []
   const errors: string[] = []
 
-  applyDevice(spec, changes, errors)
-  applyLibraries(spec, changes, errors)
-  applyDataTypes(spec, changes, errors)
-  applyGlobalVariableLists(spec, changes, errors)
-  applyPous(spec, changes, errors)
-  applyVariables(spec, changes, errors)
+  applyDevice(store, spec, changes, errors)
+  applyLibraries(store, spec, changes, errors)
+  applyDataTypes(store, spec, changes, errors)
+  applyGlobalVariableLists(store, spec, changes, errors)
+  applyPous(store, spec, changes, errors)
+  applyVariables(store, spec, changes, errors)
   // Bodies LAST, after every POU has its variables. A graphical body placing a
   // `user/<pou>` block resolves that block's pins from the POU's own variable
   // list, so a body applied in the same pass that created the POU sees an
   // interface with no pins at all.
-  applyBodies(spec, changes, errors)
-  applyGlobalVariables(spec, changes, errors)
-  applyTasks(spec, changes, errors)
-  applyInstances(spec, changes, errors)
-  applyServers(spec, changes, errors)
-  await applyRemoteDevices(spec, options.projectPath, changes, errors)
+  applyBodies(store, spec, changes, errors)
+  applyGlobalVariables(store, spec, changes, errors)
+  applyTasks(store, spec, changes, errors)
+  applyInstances(store, spec, changes, errors)
+  applyServers(store, spec, changes, errors)
+  await applyRemoteDevices(store, spec, options.projectPath, changes, errors)
   if (options.prune) {
-    prune(spec, changes, errors)
-    pruneProtocols(spec, changes)
+    prune(store, spec, changes, errors)
+    pruneProtocols(store, spec, changes)
   }
 
   // Any `location` that was bound changes the IEC address map, and nothing
   // recomputes it on the way out of these actions.
   if ((spec.globalVariables ?? []).some((variable) => variable.location) || specBindsLocation(spec)) {
-    openPLCStoreBase.getState().projectActions.recalculateIecAddresses()
+    store.getState().projectActions.recalculateIecAddresses()
   }
 
   return { changes, errors }
@@ -117,7 +117,7 @@ function specBindsLocation(spec: ApplySpec): boolean {
  * exists. A project whose board is never set compiles for whatever the scaffold
  * chose, which is rarely what was asked for.
  */
-function applyDevice(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+function applyDevice(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
   if (!spec.device) return
   const configuration: Record<string, string> = {}
   if (spec.device.board) configuration.deviceBoard = spec.device.board
@@ -128,14 +128,14 @@ function applyDevice(spec: ApplySpec, changes: PlannedChange[], errors: string[]
   // swaps the per-board vendor and persistent-storage buckets, clears the
   // platform options, and recomputes the IEC addresses.
   if (spec.device.board) {
-    openPLCStoreBase.getState().deviceActions.setDeviceBoard(spec.device.board)
+    store.getState().deviceActions.setDeviceBoard(spec.device.board)
     changes.push({ kind: 'device', action: 'update', name: `board = ${spec.device.board}` })
   }
 
   // Before the bail-out below: a `device` section carrying nothing but
   // `persistentStorage` or `rtos` still has work to do.
-  applyPersistentStorage(spec, changes)
-  applyRtos(spec, changes, errors)
+  applyPersistentStorage(store, spec, changes)
+  applyRtos(store, spec, changes, errors)
 
   const rest = { ...configuration }
   delete rest.deviceBoard
@@ -145,8 +145,8 @@ function applyDevice(spec: ApplySpec, changes: PlannedChange[], errors: string[]
   // `setDeviceDefinitions` REPLACES the object, filling the rest from defaults —
   // so a partial `{ runtimeIpAddress }` silently resets the board to the default
   // and the project saves for the wrong target.
-  const current = openPLCStoreBase.getState().deviceDefinitions.configuration
-  openPLCStoreBase.getState().deviceActions.setDeviceDefinitions({ configuration: { ...current, ...rest } as never })
+  const current = store.getState().deviceDefinitions.configuration
+  store.getState().deviceActions.setDeviceDefinitions({ configuration: { ...current, ...rest } as never })
   for (const [key, value] of Object.entries(rest)) {
     changes.push({ kind: 'device', action: 'update', name: `${key} = ${value || '(cleared)'}` })
   }
@@ -165,10 +165,10 @@ function applyDevice(spec: ApplySpec, changes: PlannedChange[], errors: string[]
  * So a bundled name is refused here, where the message can say that, rather than
  * saved into a project that only fails at compile time.
  */
-function applyLibraries(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+function applyLibraries(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
   if (!spec.libraries) return
 
-  const state = openPLCStoreBase.getState()
+  const state = store.getState()
   const bundled = new Set(state.bundledLibraryNames)
   const known = new Set(state.libraries.system.map((library) => library.name))
 
@@ -192,9 +192,9 @@ function applyLibraries(spec: ApplySpec, changes: PlannedChange[], errors: strin
   }
 }
 
-function applyGlobalVariableLists(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+function applyGlobalVariableLists(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
   for (const wanted of spec.globalVariableLists ?? []) {
-    const state: Store = openPLCStoreBase.getState()
+    const state: StoreState = store.getState()
     const existing = (state.project.data.globalVariableLists ?? []).some((list) => list.name === wanted.name)
 
     if (!existing) {
@@ -206,12 +206,12 @@ function applyGlobalVariableLists(spec: ApplySpec, changes: PlannedChange[], err
       changes.push({ kind: 'gvl', action: 'create', name: wanted.name })
     }
 
-    openPLCStoreBase.getState().projectActions.updateGlobalVariableList(
+    store.getState().projectActions.updateGlobalVariableList(
       wanted.name,
       wanted.variables.map((variable) => toVariable(variable, 'global')),
     )
     if (wanted.qualifier !== undefined) {
-      openPLCStoreBase.getState().projectActions.updateGlobalVariableListQualifier(wanted.name, wanted.qualifier)
+      store.getState().projectActions.updateGlobalVariableListQualifier(wanted.name, wanted.qualifier)
     }
     if (existing) changes.push({ kind: 'gvl', action: 'update', name: wanted.name })
   }
@@ -278,7 +278,7 @@ function checkDataTypeNames(wanted: SpecDataType): string[] {
   return problems
 }
 
-function applyDataTypes(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+function applyDataTypes(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
   for (const wanted of spec.dataTypes ?? []) {
     const problems = checkDataTypeNames(wanted)
     if (problems.length > 0) {
@@ -286,7 +286,7 @@ function applyDataTypes(spec: ApplySpec, changes: PlannedChange[], errors: strin
       continue
     }
 
-    const state: Store = openPLCStoreBase.getState()
+    const state: StoreState = store.getState()
     const existing = state.project.data.dataTypes.find((type) => type.name === wanted.name)
     const data = toDataType(wanted)
 
@@ -309,14 +309,14 @@ function applyDataTypes(spec: ApplySpec, changes: PlannedChange[], errors: strin
 // POUs and bodies
 // ---------------------------------------------------------------------------
 
-function applyPous(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+function applyPous(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
   for (const wanted of spec.pous ?? []) {
     if (wanted.language === 'sfc') {
       errors.push(`POU "${wanted.name}": SFC bodies cannot be authored — the transpiler does not support them yet.`)
       continue
     }
 
-    const state: Store = openPLCStoreBase.getState()
+    const state: StoreState = store.getState()
     const existing = state.project.data.pous.find((pou) => pou.name === wanted.name)
 
     if (!existing) {
@@ -351,24 +351,24 @@ function applyPous(spec: ApplySpec, changes: PlannedChange[], errors: string[]):
     }
 
     if (wanted.kind === 'function' && wanted.returnType) {
-      openPLCStoreBase.getState().projectActions.updatePouReturnType(wanted.name, wanted.returnType)
+      store.getState().projectActions.updatePouReturnType(wanted.name, wanted.returnType)
     }
     if (wanted.documentation !== undefined) {
-      openPLCStoreBase.getState().projectActions.updatePouDocumentation(wanted.name, wanted.documentation)
+      store.getState().projectActions.updatePouDocumentation(wanted.name, wanted.documentation)
     }
   }
 }
 
 /** Second pass: every POU exists and has its variables, so a block resolves. */
-function applyBodies(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+function applyBodies(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
   for (const wanted of spec.pous ?? []) {
     if (wanted.language === 'sfc') continue
-    if (!openPLCStoreBase.getState().project.data.pous.some((pou) => pou.name === wanted.name)) continue
-    applyBody(wanted, changes, errors)
+    if (!store.getState().project.data.pous.some((pou) => pou.name === wanted.name)) continue
+    applyBody(store, wanted, changes, errors)
   }
 }
 
-function applyBody(wanted: SpecPou, changes: PlannedChange[], errors: string[]): void {
+function applyBody(store: OpenPLCStore, wanted: SpecPou, changes: PlannedChange[], errors: string[]): void {
   if (!wanted.body) return
 
   if (TEXTUAL.has(wanted.language)) {
@@ -382,7 +382,7 @@ function applyBody(wanted: SpecPou, changes: PlannedChange[], errors: string[]):
       errors.push(`POU "${wanted.name}": ${structural}`)
       return
     }
-    openPLCStoreBase.getState().projectActions.updatePou({
+    store.getState().projectActions.updatePou({
       name: wanted.name,
       content: { language: wanted.language, value: wanted.body.text } as never,
     })
@@ -395,7 +395,7 @@ function applyBody(wanted: SpecPou, changes: PlannedChange[], errors: string[]):
       errors.push(`POU "${wanted.name}": a ladder body needs { "rungs": [...] }.`)
       return
     }
-    const failures = applyLadderBody(wanted.name, wanted.body)
+    const failures = applyLadderBody(store, wanted.name, wanted.body)
     if (failures.length > 0) {
       errors.push(...failures)
       return
@@ -409,7 +409,7 @@ function applyBody(wanted: SpecPou, changes: PlannedChange[], errors: string[]):
       errors.push(`POU "${wanted.name}": an FBD body needs { "nodes": [...], "connections": [...] }.`)
       return
     }
-    const failures = applyFbdBody(wanted.name, wanted.body)
+    const failures = applyFbdBody(store, wanted.name, wanted.body)
     if (failures.length > 0) {
       errors.push(...failures)
       return
@@ -504,7 +504,7 @@ function toVariable(spec: SpecVariable, fallbackClass: 'local' | 'global'): PLCV
  * `setDeviceBoard` swaps the per-board persistent-storage bucket, so writing
  * these first would put them on the outgoing board and lose them.
  */
-function applyPersistentStorage(spec: ApplySpec, changes: PlannedChange[]): void {
+function applyPersistentStorage(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[]): void {
   const wanted = spec.device?.persistentStorage
   if (!wanted) return
 
@@ -512,13 +512,13 @@ function applyPersistentStorage(spec: ApplySpec, changes: PlannedChange[]): void
   // materialises the defaults, keeps `persistentStorageByBoard` in step with the
   // flat view, and marks the device dirty — without that last part the save
   // writes the device file without this in it.
-  openPLCStoreBase.getState().deviceActions.setPersistentStorage({
+  store.getState().deviceActions.setPersistentStorage({
     enabled: wanted.enabled,
     ...(wanted.path !== undefined ? { path: wanted.path } : {}),
     ...(wanted.flushSeconds !== undefined ? { flushSeconds: wanted.flushSeconds } : {}),
   })
 
-  const applied = openPLCStoreBase.getState().deviceDefinitions.configuration.persistentStorage
+  const applied = store.getState().deviceDefinitions.configuration.persistentStorage
   changes.push({
     kind: 'device',
     action: 'update',
@@ -532,10 +532,10 @@ function applyPersistentStorage(spec: ApplySpec, changes: PlannedChange[]): void
  * board the catalogue knows has no RTOS mode, rather than saved where nothing
  * reads it; a board the catalogue does not know is left to the build.
  */
-function applyRtos(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+function applyRtos(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
   const wanted = spec.device?.rtos
   if (!wanted) return
-  const state = openPLCStoreBase.getState()
+  const state = store.getState()
   const board = state.deviceDefinitions.configuration.deviceBoard
   const boardInfo = state.deviceAvailableOptions.availableBoards.get(board)
   if (boardInfo && resolveTargetCapabilities(boardInfo).rtos === undefined) {
@@ -578,7 +578,7 @@ function checkVariableShape(pou: string, wanted: SpecVariable): string[] {
   return problems
 }
 
-function applyVariables(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+function applyVariables(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
   for (const pou of spec.pous ?? []) {
     for (const wanted of pou.variables ?? []) {
       const shape = checkVariableShape(pou.name, wanted)
@@ -587,7 +587,7 @@ function applyVariables(spec: ApplySpec, changes: PlannedChange[], errors: strin
         continue
       }
 
-      const state: Store = openPLCStoreBase.getState()
+      const state: StoreState = store.getState()
       const target = state.project.data.pous.find((entry) => entry.name === pou.name)
       if (!target) continue
 
@@ -612,14 +612,14 @@ function applyVariables(spec: ApplySpec, changes: PlannedChange[], errors: strin
         errors.push(`variable "${pou.name}.${wanted.name}": ${response.message ?? 'could not be created'}`)
         continue
       }
-      changes.push(namedChange(response, pou.name, wanted.name, errors))
+      changes.push(namedChange(store, response, pou.name, wanted.name, errors))
     }
   }
 }
 
-function applyGlobalVariables(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+function applyGlobalVariables(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
   for (const wanted of spec.globalVariables ?? []) {
-    const state: Store = openPLCStoreBase.getState()
+    const state: StoreState = store.getState()
     const globals = state.project.data.configurations.resource.globalVariables ?? []
     const existing = globals.findIndex((entry) => entry.name === wanted.name)
 
@@ -634,7 +634,7 @@ function applyGlobalVariables(spec: ApplySpec, changes: PlannedChange[], errors:
       errors.push(`global variable "${wanted.name}": ${response.message ?? 'could not be created'}`)
       continue
     }
-    changes.push(namedChange(response, null, wanted.name, errors))
+    changes.push(namedChange(store, response, null, wanted.name, errors))
   }
 }
 
@@ -646,7 +646,7 @@ function applyGlobalVariables(spec: ApplySpec, changes: PlannedChange[], errors:
  * later references `Motor` would then be referencing a variable that does not
  * exist, so the rename is surfaced rather than swallowed.
  */
-function namedChange(
+function namedChange(store: OpenPLCStore, 
   response: { data?: unknown },
   pouName: string | null,
   asked: string,
@@ -666,7 +666,7 @@ function namedChange(
     // device alias and a reserved word all land here.
     const why =
       pouName === null
-        ? elementNameCollision(openPLCStoreBase.getState(), asked, 'resource-global')
+        ? elementNameCollision(store.getState(), asked, 'resource-global')
         : `POU "${pouName}" already has a variable called "${asked}"`
     const reason = (why ?? 'The name is already claimed').replace(/\.?$/, '.')
     errors.push(
@@ -681,9 +681,9 @@ function namedChange(
 // Tasks and instances
 // ---------------------------------------------------------------------------
 
-function applyTasks(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+function applyTasks(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
   for (const wanted of spec.tasks ?? []) {
-    const state: Store = openPLCStoreBase.getState()
+    const state: StoreState = store.getState()
     const tasks = state.project.data.configurations.resource.tasks
     const existing = tasks.findIndex((task) => task.name === wanted.name)
 
@@ -702,9 +702,9 @@ function applyTasks(spec: ApplySpec, changes: PlannedChange[], errors: string[])
   }
 }
 
-function applyInstances(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+function applyInstances(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
   for (const wanted of spec.instances ?? []) {
-    const state: Store = openPLCStoreBase.getState()
+    const state: StoreState = store.getState()
     const resource = state.project.data.configurations.resource
 
     // `createInstance` validates neither of these, and a dangling reference
@@ -747,50 +747,50 @@ function applyInstances(spec: ApplySpec, changes: PlannedChange[], errors: strin
  * `pouActions.delete`, never `deleteRequest` — the latter opens a modal and
  * would hang here forever.
  */
-function prune(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+function prune(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
   if (spec.pous) {
     const wanted = new Set(spec.pous.map((pou) => pou.name))
-    for (const pou of [...openPLCStoreBase.getState().project.data.pous]) {
+    for (const pou of [...store.getState().project.data.pous]) {
       if (wanted.has(pou.name)) continue
-      openPLCStoreBase.getState().pouActions.delete(pou.name)
+      store.getState().pouActions.delete(pou.name)
       changes.push({ kind: 'pou', action: 'delete', name: pou.name })
     }
   }
 
   if (spec.dataTypes) {
     const wanted = new Set(spec.dataTypes.map((type) => type.name))
-    for (const type of [...openPLCStoreBase.getState().project.data.dataTypes]) {
+    for (const type of [...store.getState().project.data.dataTypes]) {
       if (wanted.has(type.name)) continue
-      openPLCStoreBase.getState().projectActions.deleteDatatype(type.name)
+      store.getState().projectActions.deleteDatatype(type.name)
       changes.push({ kind: 'data-type', action: 'delete', name: type.name })
     }
   }
 
   if (spec.instances) {
     const wanted = new Set(spec.instances.map((instance) => instance.name))
-    const resource = openPLCStoreBase.getState().project.data.configurations.resource
+    const resource = store.getState().project.data.configurations.resource
     // Backwards: every delete is by row index, so removing from the end keeps
     // the remaining indices valid.
     for (let row = resource.instances.length - 1; row >= 0; row -= 1) {
       const instance = resource.instances[row]
       if (wanted.has(instance.name)) continue
-      openPLCStoreBase.getState().projectActions.deleteInstance({ rowId: row })
+      store.getState().projectActions.deleteInstance({ rowId: row })
       changes.push({ kind: 'instance', action: 'delete', name: instance.name })
     }
   }
 
   if (spec.tasks) {
     const wanted = new Set(spec.tasks.map((task) => task.name))
-    const resource = openPLCStoreBase.getState().project.data.configurations.resource
+    const resource = store.getState().project.data.configurations.resource
     for (let row = resource.tasks.length - 1; row >= 0; row -= 1) {
       const task = resource.tasks[row]
       if (wanted.has(task.name)) continue
-      openPLCStoreBase.getState().projectActions.deleteTask({ rowId: row })
+      store.getState().projectActions.deleteTask({ rowId: row })
       changes.push({ kind: 'task', action: 'delete', name: task.name })
     }
   }
 
-  pruneVariables(spec, changes, errors)
+  pruneVariables(store, spec, changes, errors)
 }
 
 /**
@@ -803,14 +803,14 @@ function prune(spec: ApplySpec, changes: PlannedChange[], errors: string[]): voi
  * Same rule as everything else here — an absent key prunes nothing, so a POU
  * with no `variables` section keeps the ones it has.
  */
-function pruneVariables(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+function pruneVariables(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
   for (const pou of spec.pous ?? []) {
     if (!pou.variables) continue
     const wanted = new Set(pou.variables.map((variable) => variable.name.toLowerCase()))
-    const current = openPLCStoreBase.getState().project.data.pous.find((entry) => entry.name === pou.name)
+    const current = store.getState().project.data.pous.find((entry) => entry.name === pou.name)
     for (const variable of [...(current?.interface?.variables ?? [])]) {
       if (wanted.has(variable.name.toLowerCase())) continue
-      openPLCStoreBase
+      store
         .getState()
         .projectActions.deleteVariable({ scope: 'local', associatedPou: pou.name, variableName: variable.name })
       changes.push({ kind: 'variable', action: 'delete', name: `${pou.name}.${variable.name}` })
@@ -819,13 +819,13 @@ function pruneVariables(spec: ApplySpec, changes: PlannedChange[], errors: strin
 
   if (spec.globalVariables) {
     const wanted = new Set(spec.globalVariables.map((variable) => variable.name.toLowerCase()))
-    const globals = openPLCStoreBase.getState().project.data.configurations.resource.globalVariables ?? []
+    const globals = store.getState().project.data.configurations.resource.globalVariables ?? []
     for (const variable of [...globals]) {
       if (wanted.has(variable.name.toLowerCase())) continue
       // Not forced: a global a POU still declares VAR_EXTERNAL would otherwise
       // be cascade-deleted out of that POU's interface, which the spec did not
       // ask for. Report the conflict and leave both in place.
-      const response = openPLCStoreBase
+      const response = store
         .getState()
         .projectActions.deleteVariable({ scope: 'global', variableName: variable.name })
       if (!response.ok) {
@@ -842,12 +842,12 @@ function pruneVariables(spec: ApplySpec, changes: PlannedChange[], errors: strin
 
   for (const list of spec.globalVariableLists ?? []) {
     const wanted = new Set(list.variables.map((variable) => variable.name.toLowerCase()))
-    const current = openPLCStoreBase
+    const current = store
       .getState()
       .project.data.globalVariableLists?.find((entry) => entry.name === list.name)
     for (const variable of [...(current?.variables ?? [])]) {
       if (wanted.has(variable.name.toLowerCase())) continue
-      openPLCStoreBase
+      store
         .getState()
         .projectActions.deleteVariable({ scope: 'global', associatedList: list.name, variableName: variable.name })
       changes.push({ kind: 'variable', action: 'delete', name: `${list.name}.${variable.name}` })

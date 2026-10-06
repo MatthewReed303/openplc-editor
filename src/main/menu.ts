@@ -112,8 +112,9 @@ export default class MenuBuilder {
     this.mainWindow.webContents.send('compiler:export-project-request', xmlFormatTarget)
   }
 
-  handleImportProjectRequest() {
-    this.mainWindow.webContents.send('project:import-plcopen-request')
+  // The renderer owns the overwrite confirmation, so this only forwards the request.
+  handleImportPlcopenRequest() {
+    this.mainWindow.webContents.send('project:import-plcopen-accelerator')
   }
 
   async handleGetRecent() {
@@ -312,7 +313,8 @@ export default class MenuBuilder {
         },
         {
           label: i18n.t('menu:file.submenu.importFromPLCOpenXml'),
-          click: () => this.handleImportProjectRequest(),
+          click: () => this.handleImportPlcopenRequest(),
+          enabled: this.projectOpen,
         },
         { type: 'separator' },
         // Its own group: retrieving is not a save, a close, or an export, and
@@ -550,7 +552,7 @@ export default class MenuBuilder {
         // Linux. Deliberate for now, and tracked rather than fixed here:
         //   - native only: New Project, Open Project, Export to CODESYS XML,
         //     Board Package Manager
-        //   - React only: README, Import PLCopen XML (both capability-gated)
+        //   - React only: README (capability-gated)
         // Everything either menu offers now WORKS on its platform, which is the
         // part that mattered: Save As was disabled here, so on Linux a
         // retrieved project could not be saved at all. Full parity is a bigger
@@ -632,7 +634,8 @@ export default class MenuBuilder {
           },
           {
             label: i18n.t('menu:file.submenu.importFromPLCOpenXml'),
-            click: () => this.handleImportProjectRequest(),
+            click: () => this.handleImportPlcopenRequest(),
+            enabled: this.projectOpen,
           },
           {
             type: 'separator',

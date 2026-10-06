@@ -106,7 +106,7 @@ describe('old-editor ladderToXml — Execute element', () => {
     // `pou` is in the parser's ARRAY_TAGS, so it always arrives as an array.
     const ldXml = (project.types as { pous: { pou: { body: { LD: unknown } }[] } }).pous.pou[0].body.LD
 
-    const { body, warnings } = parseLadderXml('Main', ldXml, executeStCode)
+    const { body, warnings } = parseLadderXml('Main', ldXml, undefined, executeStCode)
     expect(warnings).toEqual([])
 
     const executes = body.rungs.flatMap((rung) => rung.nodes.filter((node) => node.type === 'execute'))

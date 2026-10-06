@@ -6,7 +6,7 @@
  * saved without complaint in each case.
  */
 
-import { openPLCStoreBase } from '@root/frontend/store'
+import { createTestStore } from '@root/frontend/store/testing'
 
 // The FBD body applier reaches the FBD component modules, which do not load
 // under jest. Nothing here applies an FBD body.
@@ -15,10 +15,13 @@ jest.mock('../apply/fbd', () => ({ applyFbdBody: () => [] }))
 import { applySpec } from '../apply/plan'
 import type { ApplySpec } from '../apply/schema'
 
-const dataTypesIn = () => openPLCStoreBase.getState().project.data.dataTypes
+// One store for the file, as the process singleton was.
+const store = createTestStore()
+
+const dataTypesIn = () => store.getState().project.data.dataTypes
 
 const apply = (dataTypes: unknown) =>
-  applySpec({ specVersion: 1, dataTypes } as ApplySpec, { prune: false, projectPath: '/does/not/matter' })
+  applySpec(store, { specVersion: 1, dataTypes } as ApplySpec, { prune: false, projectPath: '/does/not/matter' })
 
 describe('a structure member declared as an array', () => {
   // The store keeps an array's bounds in `type.data`; the spec states them as

@@ -1,13 +1,16 @@
 import { act, renderHook } from '@testing-library/react'
+import { createElement, type ReactNode } from 'react'
 
 import type { RtosStats, RtosStatsResult } from '@root/middleware/shared/ports/types'
+import { PlatformProvider } from '@root/middleware/shared/providers'
+import type { PlatformPorts } from '@root/middleware/shared/providers/types'
 
 const mockReadTaskStats = jest.fn<Promise<RtosStatsResult>, [boolean?]>()
 
-jest.mock('@root/middleware/shared/providers/platform-context', () => ({
-  useDevice: () => mockDevice,
-}))
-const mockDevice = { readTaskStats: (reset?: boolean) => mockReadTaskStats(reset) }
+// Only the device port is read. One object for the whole file, as the
+// platform's device port is: the hook's polling restarts when it changes.
+const ports = { device: { readTaskStats: (reset?: boolean) => mockReadTaskStats(reset) } } as unknown as PlatformPorts
+const wrapper = ({ children }: { children: ReactNode }) => createElement(PlatformProvider, { ports, children })
 
 import {
   BOARD_TASK_STATS_MAX_FAILURES,
@@ -47,7 +50,7 @@ describe('useBoardTaskStats', () => {
   it('reads at once, starting a new window it does not show, then shows each later read', async () => {
     mockReadTaskStats.mockResolvedValueOnce({ success: true, stats: withBusy(7, 1) })
     mockReadTaskStats.mockResolvedValue({ success: true, stats: STATS })
-    const { result } = renderHook(() => useBoardTaskStats(true))
+    const { result } = renderHook(() => useBoardTaskStats(true), { wrapper })
     await settle()
     expect(mockReadTaskStats).toHaveBeenLastCalledWith(true)
     // The first reply covers the time before the screen opened.
@@ -61,7 +64,7 @@ describe('useBoardTaskStats', () => {
   it('shows the busy replies since the screen opened, across the counter wrapping', async () => {
     mockReadTaskStats.mockResolvedValueOnce({ success: true, stats: withBusy(0xfffffffe, 5) })
     mockReadTaskStats.mockResolvedValue({ success: true, stats: withBusy(1, 9) })
-    const { result } = renderHook(() => useBoardTaskStats(true))
+    const { result } = renderHook(() => useBoardTaskStats(true), { wrapper })
     await settle()
     await wait(BOARD_TASK_STATS_POLL_MS)
     expect(result.current.busySinceOpen).toEqual([3, 4])
@@ -69,7 +72,7 @@ describe('useBoardTaskStats', () => {
 
   it('stops asking a board that is not in RTOS mode', async () => {
     mockReadTaskStats.mockResolvedValue({ success: false, unsupported: true })
-    const { result } = renderHook(() => useBoardTaskStats(true))
+    const { result } = renderHook(() => useBoardTaskStats(true), { wrapper })
     await settle()
     expect(result.current).toMatchObject({ unsupported: true, answered: false })
     await wait(BOARD_TASK_STATS_POLL_MS * 3)
@@ -80,7 +83,7 @@ describe('useBoardTaskStats', () => {
     mockReadTaskStats.mockResolvedValueOnce({ success: true, stats: STATS })
     mockReadTaskStats.mockResolvedValueOnce({ success: true, stats: STATS })
     mockReadTaskStats.mockResolvedValueOnce({ success: false, error: 'Not connected to target' })
-    const { result } = renderHook(() => useBoardTaskStats(true))
+    const { result } = renderHook(() => useBoardTaskStats(true), { wrapper })
     await settle()
     await wait(BOARD_TASK_STATS_POLL_MS)
     await wait(BOARD_TASK_STATS_POLL_MS)
@@ -90,7 +93,7 @@ describe('useBoardTaskStats', () => {
 
   it('slows down when reads keep failing, and recovers when the board answers again', async () => {
     mockReadTaskStats.mockResolvedValue({ success: false, error: 'Timeout' })
-    const { result } = renderHook(() => useBoardTaskStats(true))
+    const { result } = renderHook(() => useBoardTaskStats(true), { wrapper })
     await settle()
     for (let i = 1; i < BOARD_TASK_STATS_MAX_FAILURES; i++) await wait(BOARD_TASK_STATS_POLL_MS)
     expect(mockReadTaskStats).toHaveBeenCalledTimes(BOARD_TASK_STATS_MAX_FAILURES)
@@ -110,7 +113,7 @@ describe('useBoardTaskStats', () => {
       jest.advanceTimersByTime(600)
       return { success: true, stats: STATS }
     })
-    renderHook(() => useBoardTaskStats(true))
+    renderHook(() => useBoardTaskStats(true), { wrapper })
     await settle()
     // 600 ms a read: the next one waits four times that.
     await wait(BOARD_TASK_STATS_POLL_MS)
@@ -121,7 +124,7 @@ describe('useBoardTaskStats', () => {
 
   it('counts a rejected read as a failure rather than dropping it', async () => {
     mockReadTaskStats.mockRejectedValue(new Error('link lost'))
-    const { result } = renderHook(() => useBoardTaskStats(true))
+    const { result } = renderHook(() => useBoardTaskStats(true), { wrapper })
     await settle()
     expect(result.current.error).toBe('link lost')
     await wait(BOARD_TASK_STATS_POLL_MS / 2)
@@ -131,7 +134,7 @@ describe('useBoardTaskStats', () => {
   it('keeps asking for a new window until a read succeeds', async () => {
     mockReadTaskStats.mockResolvedValueOnce({ success: false, error: 'busy' })
     mockReadTaskStats.mockResolvedValue({ success: true, stats: STATS })
-    renderHook(() => useBoardTaskStats(true))
+    renderHook(() => useBoardTaskStats(true), { wrapper })
     await settle()
     await wait(BOARD_TASK_STATS_POLL_MS)
     await wait(BOARD_TASK_STATS_POLL_MS)
@@ -141,7 +144,7 @@ describe('useBoardTaskStats', () => {
   it('ignores a reply that lands after the screen closed', async () => {
     let answer: (value: RtosStatsResult) => void = () => {}
     mockReadTaskStats.mockReturnValue(new Promise<RtosStatsResult>((resolve) => (answer = resolve)))
-    const { result, unmount } = renderHook(() => useBoardTaskStats(true))
+    const { result, unmount } = renderHook(() => useBoardTaskStats(true), { wrapper })
     unmount()
     await act(async () => {
       answer({ success: true, stats: STATS })
@@ -150,7 +153,7 @@ describe('useBoardTaskStats', () => {
   })
 
   it('reads nothing while inactive', async () => {
-    renderHook(() => useBoardTaskStats(false))
+    renderHook(() => useBoardTaskStats(false), { wrapper })
     await settle()
     expect(mockReadTaskStats).not.toHaveBeenCalled()
   })

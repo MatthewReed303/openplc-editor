@@ -60,7 +60,8 @@ export type LadderBlockConnectedVariables = {
   handleId: string
   handleTableId?: string
   type: 'input' | 'output'
-  variable: PLCVariable | undefined
+  // A literal or an expression the POU does not declare is stored by name only.
+  variable: PLCVariable | { id?: string; name: string } | undefined
 }[]
 
 export type BlockNodeData<T> = BasicNodeData & {
@@ -174,5 +175,5 @@ export type VariableBuilderProps = BuilderBasicProps & {
     handleId: string
     variableType: BlockVariant['variables'][0]
   }
-  variable: PLCVariable | undefined
+  variable: PLCVariable | { id?: string; name: string } | undefined
 }

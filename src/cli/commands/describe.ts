@@ -12,7 +12,7 @@
  * does not compile.
  */
 
-import { openPLCStoreBase } from '@root/frontend/store'
+import type { OpenPLCStore } from '@root/frontend/store'
 import type { SystemLibrary } from '@root/middleware/shared/ports/library-types'
 import type { PLCDataType, PLCPou, PLCVariable } from '@root/middleware/shared/ports/types'
 import { readRtosSettings } from '@root/middleware/shared/utils/rtos'
@@ -27,7 +27,7 @@ import { loadProject, unreadableProtocolFilesMessage } from '../project/load'
 
 const TEXTUAL = new Set(['st', 'il', 'python', 'cpp'])
 
-export async function runDescribe(args: ParsedArgs, reporter: Reporter): Promise<CliResult> {
+export async function runDescribe(store: OpenPLCStore, args: ParsedArgs, reporter: Reporter): Promise<CliResult> {
   const projectPath = args.positionals[0] ?? stringFlag(args, 'project')
   if (!projectPath) {
     return reporter.failure(
@@ -36,7 +36,7 @@ export async function runDescribe(args: ParsedArgs, reporter: Reporter): Promise
     )
   }
 
-  const loaded = await loadProject(projectPath)
+  const loaded = await loadProject(store, projectPath)
   if (!loaded.success) {
     return reporter.failure({ code: ErrorCode.ProjectNotFound, message: loaded.error }, ExitCode.NotFound)
   }
@@ -54,7 +54,7 @@ export async function runDescribe(args: ParsedArgs, reporter: Reporter): Promise
     )
   }
 
-  const state = openPLCStoreBase.getState()
+  const state = store.getState()
   const onlyPou = stringFlag(args, 'pou')
   const pous = state.project.data.pous.filter((pou) => !onlyPou || pou.name === onlyPou)
   // Every POU in the project, not just the filtered view — a block can call one

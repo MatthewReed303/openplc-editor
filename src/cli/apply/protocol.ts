@@ -17,7 +17,7 @@ import { normalizeEthercatSlave } from '@root/backend/shared/protocol/normalize-
 import type { NormalizedRemoteDevice } from '@root/backend/shared/protocol/normalize-remote-device-spec'
 import { normalizeRemoteDeviceSpec } from '@root/backend/shared/protocol/normalize-remote-device-spec'
 import { normalizeServerSpec } from '@root/backend/shared/protocol/normalize-server-spec'
-import { openPLCStoreBase } from '@root/frontend/store'
+import type { OpenPLCStore } from '@root/frontend/store'
 import { seedTransports } from '@root/frontend/store/slices/project/slice'
 import type { ConfiguredEtherCATDevice } from '@root/middleware/shared/ports/esi-types'
 import type { PLCRemoteDevice, PLCServer } from '@root/middleware/shared/ports/types'
@@ -31,10 +31,10 @@ interface PreservedSecrets {
   passwordHashById: Map<string, string | null>
 }
 
-export function applyServers(spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+export function applyServers(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
   if (!spec.servers) return
 
-  const state = () => openPLCStoreBase.getState()
+  const state = () => store.getState()
   const existing = state().project.data.servers ?? []
   const preserved = new Map(existing.map((server) => [server.name, collectSecrets(server)]))
 
@@ -122,7 +122,7 @@ function restoreSecrets(server: PLCServer, spec: SpecServer, preserved: Preserve
   }
 }
 
-export async function applyRemoteDevices(
+export async function applyRemoteDevices(store: OpenPLCStore, 
   spec: ApplySpec,
   projectPath: string,
   changes: PlannedChange[],
@@ -130,7 +130,7 @@ export async function applyRemoteDevices(
 ): Promise<void> {
   if (!spec.remoteDevices) return
 
-  const state = () => openPLCStoreBase.getState()
+  const state = () => store.getState()
 
   const wanted = spec.remoteDevices.map((device) => device.name.toLowerCase())
   const duplicate = wanted.find((name, index) => wanted.indexOf(name) !== index)
@@ -152,7 +152,7 @@ export async function applyRemoteDevices(
 
   // EtherCAT slaves are built before anything is written: reading an ESI file
   // can fail, and a half-written bus is worse than an unchanged one.
-  const slavesByDevice = await buildEthercatSlaves(spec.remoteDevices, projectPath, errors)
+  const slavesByDevice = await buildEthercatSlaves(store, spec.remoteDevices, projectPath, errors)
   if (errors.length > 0) return
 
   const existing = state().project.data.remoteDevices ?? []
@@ -234,7 +234,7 @@ export async function applyRemoteDevices(
  * mints the uuid, so requiring it would mean importing, reading the id back and
  * pasting it into the spec before anything could be authored.
  */
-async function buildEthercatSlaves(
+async function buildEthercatSlaves(store: OpenPLCStore, 
   specs: readonly SpecRemoteDevice[],
   projectPath: string,
   errors: string[],
@@ -255,7 +255,7 @@ async function buildEthercatSlaves(
   // replacing would make every re-apply rename `Axis1` to `Axis1_01` and push
   // its channels to fresh addresses — the spec would never round-trip.
   const replaced = new Set(specs.map((device) => device.name))
-  const untouched = openPLCStoreBase
+  const untouched = store
     .getState()
     .project.data.remoteDevices?.filter((device) => !replaced.has(device.name))
   const usedAddresses = claimedAddresses(untouched)
@@ -327,8 +327,8 @@ function claimedSlaveNames(devices: readonly PLCRemoteDevice[] | undefined): Set
 }
 
 /** Remove servers and remote devices the spec stopped mentioning. */
-export function pruneProtocols(spec: ApplySpec, changes: PlannedChange[]): void {
-  const state = () => openPLCStoreBase.getState()
+export function pruneProtocols(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[]): void {
+  const state = () => store.getState()
 
   if (spec.servers) {
     const wanted = new Set(spec.servers.map((server) => server.name))

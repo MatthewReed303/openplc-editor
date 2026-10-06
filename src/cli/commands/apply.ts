@@ -15,6 +15,7 @@
 import { readFile } from 'node:fs/promises'
 
 import { executeSaveProject } from '@root/frontend/services/save-actions'
+import type { OpenPLCStore } from '@root/frontend/store'
 import { EDITOR_CAPABILITIES } from '@root/middleware/shared/ports/platform-capabilities'
 
 import { applySpec, type PlannedChange } from '../apply/plan'
@@ -25,7 +26,7 @@ import type { CliResult, Reporter } from '../output'
 import { loadProject, unreadableProtocolFilesMessage } from '../project/load'
 import { createCliProjectPort } from '../project/project-port'
 
-export async function runApply(args: ParsedArgs, reporter: Reporter): Promise<CliResult> {
+export async function runApply(store: OpenPLCStore, args: ParsedArgs, reporter: Reporter): Promise<CliResult> {
   const specPath = args.positionals[0]
   if (!specPath) {
     return reporter.failure(
@@ -69,7 +70,7 @@ export async function runApply(args: ParsedArgs, reporter: Reporter): Promise<Cl
     )
   }
 
-  const loaded = await loadProject(projectPath)
+  const loaded = await loadProject(store, projectPath)
   if (!loaded.success) {
     return reporter.failure({ code: ErrorCode.ProjectNotFound, message: loaded.error }, ExitCode.NotFound)
   }
@@ -107,7 +108,7 @@ export async function runApply(args: ParsedArgs, reporter: Reporter): Promise<Cl
   }
 
   const dryRun = boolFlag(args, 'dry-run')
-  const outcome = await applySpec(parsed.spec, { prune: boolFlag(args, 'prune'), projectPath })
+  const outcome = await applySpec(store, parsed.spec, { prune: boolFlag(args, 'prune'), projectPath })
 
   // Errors before the save, always: a half-applied project written to disk is
   // worse than one not written at all, and the store is discarded on exit.
@@ -131,7 +132,7 @@ export async function runApply(args: ParsedArgs, reporter: Reporter): Promise<Cl
     )
   }
 
-  const saved = await executeSaveProject(createCliProjectPort(), EDITOR_CAPABILITIES, 'user')
+  const saved = await executeSaveProject(store, createCliProjectPort(), EDITOR_CAPABILITIES, 'user')
   if (!saved.success) {
     return reporter.failure({ code: ErrorCode.Internal, message: 'The project could not be saved.' }, ExitCode.Internal)
   }

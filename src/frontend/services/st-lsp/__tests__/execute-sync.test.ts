@@ -1,8 +1,9 @@
 import type { PLCPou } from '../../../../middleware/shared/ports/types'
+import type { OpenPLCStore } from '../../../store'
 import { getBodyLineOffset } from '../../lsp-shared/body-offsets'
+import { attachExecuteSync, collectExecuteDocs, getExecuteDraftApi } from '../execute-sync'
 
-// The store is a module-level singleton in the real app; stub it so the sync
-// layer can be driven directly.
+// A stand-in store handed to the sync layer, so it can be driven directly.
 const state: {
   project: { data: { pous: PLCPou[] } }
   ladderFlows: unknown[]
@@ -15,15 +16,10 @@ const state: {
   projectActions: { getAliasIndex: () => new Map() },
 }
 
-jest.mock('../../../store', () => ({
-  openPLCStoreBase: {
-    getState: () => state,
-    subscribe: () => () => {},
-  },
-}))
-
-// eslint-disable-next-line import/first -- must follow the store mock
-import { attachExecuteSync, collectExecuteDocs, getExecuteDraftApi } from '../execute-sync'
+const store = {
+  getState: () => state,
+  subscribe: () => () => {},
+} as unknown as OpenPLCStore
 
 function makePou(name: string): PLCPou {
   return {
@@ -106,7 +102,7 @@ describe('live draft channel', () => {
   // only at compile time, which is exactly what this element exists to avoid.
   it('publishes a draft immediately, without waiting for a store commit', () => {
     const service = makeService()
-    const handle = attachExecuteSync(service as never)
+    const handle = attachExecuteSync(store, service as never)
 
     getExecuteDraftApi()?.syncDraft(EXECUTE_URI, 'counter := notAVariable + 1;')
 
@@ -123,7 +119,7 @@ describe('live draft channel', () => {
 
   it('records a body offset that points at the snippet, not the preamble', () => {
     const service = makeService()
-    const handle = attachExecuteSync(service as never)
+    const handle = attachExecuteSync(store, service as never)
 
     getExecuteDraftApi()?.syncDraft(EXECUTE_URI, 'counter := 1;')
 
@@ -138,7 +134,7 @@ describe('live draft channel', () => {
 
   it('sends didChange for an edit and nothing at all for an unchanged draft', () => {
     const service = makeService()
-    const handle = attachExecuteSync(service as never)
+    const handle = attachExecuteSync(store, service as never)
 
     getExecuteDraftApi()?.syncDraft(EXECUTE_URI, 'counter := 1;')
     getExecuteDraftApi()?.syncDraft(EXECUTE_URI, 'counter := 1;')
@@ -152,7 +148,7 @@ describe('live draft channel', () => {
 
   it('ignores URIs that are not Execute documents, and unknown POUs', () => {
     const service = makeService()
-    const handle = attachExecuteSync(service as never)
+    const handle = attachExecuteSync(store, service as never)
 
     getExecuteDraftApi()?.syncDraft('inmemory://pou/main.st', 'counter := 1;')
     getExecuteDraftApi()?.syncDraft('inmemory://execute/nope/X.st', 'counter := 1;')
@@ -163,7 +159,7 @@ describe('live draft channel', () => {
   })
 
   it('is null once disposed, so callers degrade instead of throwing', () => {
-    const handle = attachExecuteSync(makeService() as never)
+    const handle = attachExecuteSync(store, makeService() as never)
     expect(getExecuteDraftApi()).not.toBeNull()
 
     handle.dispose()
@@ -177,7 +173,7 @@ describe('live draft channel', () => {
   // auto-increment, which is correct by construction.
   it('never supplies its own document version', () => {
     const service = makeService()
-    const handle = attachExecuteSync(service as never)
+    const handle = attachExecuteSync(store, service as never)
 
     getExecuteDraftApi()?.syncDraft(EXECUTE_URI, 'counter := 1;')
     getExecuteDraftApi()?.syncDraft(EXECUTE_URI, 'counter := 2;')
@@ -196,7 +192,7 @@ describe('live draft channel', () => {
   // re-analyse the worker stays silent and that model shows no squiggles.
   it('re-publishes unchanged text when forced, so a newly mounted model gets markers', () => {
     const service = makeService()
-    const handle = attachExecuteSync(service as never)
+    const handle = attachExecuteSync(store, service as never)
 
     getExecuteDraftApi()?.syncDraft(EXECUTE_URI, 'counter := 1;')
     expect(service.changeDocument).not.toHaveBeenCalled()

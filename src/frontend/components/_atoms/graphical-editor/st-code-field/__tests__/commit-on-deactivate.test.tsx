@@ -1,5 +1,7 @@
-import { act, render } from '@testing-library/react'
+import { act, render as rtlRender } from '@testing-library/react'
+import type { ReactElement } from 'react'
 
+import { createStoreWrapper, createTestStore } from '../../../../../store/testing'
 import { StCodeField } from '../index'
 
 // The field stays mounted when `active` flips to false — only Monaco unmounts.
@@ -19,11 +21,13 @@ jest.mock('@monaco-editor/react', () => ({
 jest.mock('../../../../../hooks/use-debug-value', () => ({ useIsDebuggerVisible: () => false }))
 jest.mock('../../../../../hooks/use-st-debug-decorations', () => ({ useStDebugDecorations: () => undefined }))
 jest.mock('../../../../../services/st-lsp/execute-sync', () => ({ getExecuteDraftApi: () => undefined }))
-jest.mock('../../../../../store', () => ({ useOpenPLCStore: () => false }))
 jest.mock('../../../../_features/[workspace]/editor/monaco/theme-utils', () => ({
   applyThemeNow: () => undefined,
   ensureOpenplcThemes: () => undefined,
 }))
+
+// The field reads only the dark-mode flag, which a fresh store has off.
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: createStoreWrapper(createTestStore()) })
 
 beforeEach(() => {
   editorOnChange = undefined

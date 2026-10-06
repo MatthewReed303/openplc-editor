@@ -1,4 +1,4 @@
-import { useOpenPLCStore } from '../store'
+import type { OpenPLCStore } from '../store'
 
 /** Tab name, path and model the Package Manager screen is registered under. */
 const PACKAGE_MANAGER_TAB_NAME = 'Package Manager'
@@ -10,8 +10,8 @@ const PACKAGE_MANAGER_TAB_NAME = 'Package Manager'
  * Settings core dropdown, and the main-process "open manager" event — so the
  * tab/model registration lives here rather than being repeated at each.
  */
-export function openPackageManagerTab(): void {
-  const { tabsActions, editorActions } = useOpenPLCStore.getState()
+export function openPackageManagerTab(store: OpenPLCStore): void {
+  const { tabsActions, editorActions } = store.getState()
   const tab = {
     name: PACKAGE_MANAGER_TAB_NAME,
     path: '/package-manager',

@@ -18,6 +18,7 @@ import { CompilerModule } from '@root/backend/editor/compiler'
 import { LibraryManagerModule } from '@root/backend/editor/library-manager'
 import { collectNativePous } from '@root/backend/shared/library/native-pou-list'
 import { preprocessPous } from '@root/backend/shared/utils/PLC/preprocess-pous'
+import type { OpenPLCStore } from '@root/frontend/store'
 import { toIpcProjectData } from '@root/middleware/adapters/editor/compiler-adapter'
 import type { StlibArchiveDTO } from '@root/middleware/shared/ports/library-port'
 import type { CompileLibraryResult, PLCProjectData } from '@root/middleware/shared/ports/types'
@@ -29,12 +30,12 @@ import { type CliResult, renderTable, type Reporter } from '../output'
 import { loadProject } from '../project/load'
 import { runLibraryPin, runLibraryUnpin } from './library-pin'
 
-export async function runLibrary(args: ParsedArgs, reporter: Reporter): Promise<CliResult> {
+export async function runLibrary(store: OpenPLCStore, args: ParsedArgs, reporter: Reporter): Promise<CliResult> {
   const [subcommand, target] = args.positionals
 
   switch (subcommand) {
     case 'build':
-      return runLibraryBuild(args, reporter, target)
+      return runLibraryBuild(store, args, reporter, target)
     case 'install':
       return runLibraryInstall(reporter, target)
     case 'uninstall':
@@ -44,9 +45,9 @@ export async function runLibrary(args: ParsedArgs, reporter: Reporter): Promise<
     case 'list':
       return runLibraryList(reporter)
     case 'pin':
-      return runLibraryPin(reporter, args.positionals[1], args.positionals[2])
+      return runLibraryPin(store, reporter, args.positionals[1], args.positionals[2])
     case 'unpin':
-      return runLibraryUnpin(reporter, args.positionals[1], args.positionals[2])
+      return runLibraryUnpin(store, reporter, args.positionals[1], args.positionals[2])
     default:
       return reporter.failure(
         {
@@ -71,7 +72,7 @@ export function splitLibraryRef(ref: string): { name: string; version?: string }
   return { name: ref.slice(0, at), version: ref.slice(at + 1) }
 }
 
-async function runLibraryBuild(
+async function runLibraryBuild(store: OpenPLCStore, 
   args: ParsedArgs,
   reporter: Reporter,
   projectPath: string | undefined,
@@ -83,7 +84,7 @@ async function runLibraryBuild(
     )
   }
 
-  const loaded = await loadProject(projectPath)
+  const loaded = await loadProject(store, projectPath)
   if (!loaded.success) {
     return reporter.failure({ code: ErrorCode.ProjectNotFound, message: loaded.error }, ExitCode.NotFound)
   }

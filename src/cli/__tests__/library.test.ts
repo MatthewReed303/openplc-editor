@@ -7,6 +7,8 @@
  * reports, and the shape of what comes back.
  */
 
+import { createTestStore } from '@root/frontend/store/testing'
+
 import { parseArgs } from '../args'
 import { runLibrary } from '../commands/library'
 import { ErrorCode, ExitCode } from '../exit-codes'
@@ -73,7 +75,7 @@ function capture(): { streams: WriterStreams; out: string[]; err: string[] } {
 const run = async (argv: string[]) => {
   const { streams, out } = capture()
   const reporter = new Reporter({ mode: 'json', streams })
-  const result = await runLibrary(parseArgs(argv), reporter)
+  const result = await runLibrary(createTestStore(), parseArgs(argv), reporter)
   return { result, payload: out.length > 0 ? JSON.parse(out[0]) : undefined }
 }
 

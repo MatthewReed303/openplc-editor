@@ -9,9 +9,11 @@
  * Ordering is the whole assertion. `jest-vi-shim.ts` already hydrates system
  * libraries for every spec in this repo, so a test that merely checks the pool
  * is populated passes whether or not `loadProject` does anything at all. The
- * store is mocked rather than spied on because its real state is immer-frozen
- * and cannot be instrumented in place.
+ * store handed in is a stand-in rather than a spied real one, because its real
+ * state is immer-frozen and cannot be instrumented in place.
  */
+
+import type { OpenPLCStore } from '@root/frontend/store'
 
 import { loadProject } from '../project/load'
 
@@ -31,8 +33,7 @@ let setBundledLibraryNames: jest.Mock
 let canEdit = true
 let isEphemeralProject = false
 
-jest.mock('@root/frontend/store', () => ({
-  openPLCStoreBase: {
+const store = {
     getState: () => ({
       deviceActions: { setAvailableOptions: record('setAvailableOptions') },
       libraryActions: {
@@ -47,8 +48,7 @@ jest.mock('@root/frontend/store', () => ({
         configuration: { deviceBoard: 'Uno', vendorScreenData: undefined, communicationPort: undefined },
       },
     }),
-  },
-}))
+} as unknown as OpenPLCStore
 
 jest.mock('@root/backend/editor/hardware', () => ({
   HardwareModule: jest.fn().mockImplementation(() => ({ getAvailableBoards: async () => [] })),
@@ -91,7 +91,7 @@ beforeEach(() => {
 
 describe('loadProject library hydration', () => {
   it('sets the system libraries before opening the project, and the boards on both sides of it', async () => {
-    await loadProject('/tmp/p')
+    await loadProject(store, '/tmp/p')
 
     // The boards land twice on purpose: once so the project opens against a
     // resolved target, and once after so the migrations that read project
@@ -106,7 +106,7 @@ describe('loadProject library hydration', () => {
   })
 
   it('passes the installed archives through, and names only the bundled ones', async () => {
-    await loadProject('/tmp/p')
+    await loadProject(store, '/tmp/p')
 
     expect(setSystemLibraries).toHaveBeenCalledWith(archives)
     expect(setBundledLibraryNames).toHaveBeenCalledWith(['bundled-one'])
@@ -117,7 +117,7 @@ describe('loadProject library hydration', () => {
       throw new Error('registry unreadable')
     })
 
-    const result = await loadProject('/tmp/p')
+    const result = await loadProject(store, '/tmp/p')
 
     expect(result.success).toBe(true)
     expect(result.success && result.project.warnings).toEqual([
@@ -132,7 +132,7 @@ describe('loadProject save guards', () => {
   // toast, so a writing command that does not check them exits 0 having written
   // nothing.
   it('reports the workspace flags a writing command has to check', async () => {
-    const result = await loadProject('/tmp/p')
+    const result = await loadProject(store, '/tmp/p')
 
     expect(result.success && result.project.canEdit).toBe(true)
     expect(result.success && result.project.isEphemeral).toBe(false)
@@ -142,7 +142,7 @@ describe('loadProject save guards', () => {
     canEdit = false
     isEphemeralProject = true
 
-    const result = await loadProject('/tmp/p')
+    const result = await loadProject(store, '/tmp/p')
 
     expect(result.success && result.project.canEdit).toBe(false)
     expect(result.success && result.project.isEphemeral).toBe(true)

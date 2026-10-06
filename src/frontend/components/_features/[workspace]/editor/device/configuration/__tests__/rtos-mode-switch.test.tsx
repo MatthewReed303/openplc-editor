@@ -1,10 +1,20 @@
 import { beforeEach, describe, expect, it } from '@jest/globals'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render as rtlRender, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
 
 import type { BoardInfo, PLCTask } from '../../../../../../../../middleware/shared/ports/types'
 import { RTOS_DEFAULT_ENABLED } from '../../../../../../../../middleware/shared/utils/rtos'
-import { openPLCStoreBase } from '../../../../../../../store'
+import type { OpenPLCStore } from '../../../../../../../store'
+import { createStoreWrapper, createTestStore } from '../../../../../../../store/testing'
 import { RtosModeSwitch } from '../components/rtos-mode-switch'
+
+let store: OpenPLCStore
+
+beforeEach(() => {
+  store = createTestStore()
+})
+
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: createStoreWrapper(store) })
 
 const esp32: BoardInfo = {
   compiler: 'arduino-cli',
@@ -20,7 +30,7 @@ function checked(): boolean {
 }
 
 function setUp(settings: Record<string, unknown>, tasks: PLCTask[]) {
-  openPLCStoreBase.setState((state) => ({
+  store.setState((state) => ({
     deviceDefinitions: {
       ...state.deviceDefinitions,
       configuration: { ...state.deviceDefinitions.configuration, vendorScreenData: settings },
@@ -39,7 +49,7 @@ function setUp(settings: Record<string, unknown>, tasks: PLCTask[]) {
 }
 
 function vendorScreenData() {
-  return openPLCStoreBase.getState().deviceDefinitions.configuration.vendorScreenData
+  return store.getState().deviceDefinitions.configuration.vendorScreenData
 }
 
 describe('RtosModeSwitch', () => {

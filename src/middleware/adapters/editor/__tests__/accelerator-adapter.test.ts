@@ -47,10 +47,10 @@ beforeEach(() => {
     saveProjectAccelerator: register('saveProject'),
     saveProjectAsAccelerator: register('saveProjectAs'),
     retrieveProjectAccelerator: register('retrieveProject'),
+    importPlcopenAccelerator: register('importPlcopen'),
     saveFileAccelerator: register('saveFile'),
     closeProjectAccelerator: register('closeProject'),
     exportProjectRequest: register('exportProject'),
-    importProjectRequest: register('importProject'),
     printAccelerator: register('print'),
     pageSetupAccelerator: register('pageSetup'),
     closeTabAccelerator: register('closeTab'),
@@ -108,6 +108,7 @@ testAccelerator('onOpenProject', 'openProject', 'handleOpenProjectRequest')
 testAccelerator('onSaveProject', 'saveProject', 'saveProjectAccelerator')
 testAccelerator('onSaveProjectAs', 'saveProjectAs', 'saveProjectAsAccelerator')
 testAccelerator('onRetrieveProject', 'retrieveProject', 'retrieveProjectAccelerator')
+testAccelerator('onImportPlcopen', 'importPlcopen', 'importPlcopenAccelerator')
 testAccelerator('onSaveFile', 'saveFile', 'saveFileAccelerator')
 testAccelerator('onCloseProject', 'closeProject', 'closeProjectAccelerator')
 testAccelerator('onPrint', 'print', 'printAccelerator')
@@ -120,7 +121,6 @@ testAccelerator('onRedo', 'redo', 'handleRedoRequest')
 testAccelerator('onSwitchPerspective', 'switchPerspective', 'switchPerspective')
 testAccelerator('onAbout', 'about', 'aboutModalAccelerator')
 testAccelerator('onQuitApp', 'quitApp', 'quitAppRequest')
-testAccelerator('onImportProject', 'importProject', 'importProjectRequest')
 
 describe('onExportProject', () => {
   // Regression: the adapter used to swallow the IPC argument

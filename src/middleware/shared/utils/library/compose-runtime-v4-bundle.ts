@@ -98,11 +98,13 @@ export interface ComposeRuntimeV4BundleInput {
      *  Caller catches `OpcUaConfigError` and surfaces it before
      *  calling the composer — passing `null` skips the file. */
     opcUa: string | null
-    /** From `generateEthercatConfig(remoteDevices)`.  Caller should
-     *  run `validateEthercatConfig` first and abort the compile (not
-     *  call the composer) when validation produces errors.  `null`
-     *  when the project has no EtherCAT devices. */
+    /** EtherCAT, from `generateRuntimeConfs`, which picks the format by
+     *  runtime version and validates it first.  `ethercat` is the legacy
+     *  single file; the other two are the EtherDOG split.  `null` skips
+     *  the file. */
     ethercat: string | null
+    ethercatBusconfig: string | null
+    ethercatIomapping: string | null
   }
 }
 
@@ -165,7 +167,10 @@ export function composeRuntimeV4Bundle(input: ComposeRuntimeV4BundleInput): Reco
   if (input.confs.modbusMaster) files['conf/modbus_master.json'] = input.confs.modbusMaster
   if (input.confs.s7Comm) files['conf/s7comm.json'] = input.confs.s7Comm
   if (input.confs.opcUa) files['conf/opcua.json'] = input.confs.opcUa
-  if (input.confs.ethercat) files['conf/ethercat.json'] = input.confs.ethercat
+  // Legacy runtimes get `ethercat.json` even when empty, as they always did.
+  if (input.confs.ethercat !== null) files['conf/ethercat.json'] = input.confs.ethercat
+  if (input.confs.ethercatBusconfig) files['conf/ethercat_busconfig.json'] = input.confs.ethercatBusconfig
+  if (input.confs.ethercatIomapping) files['conf/ethercat_iomapping.json'] = input.confs.ethercatIomapping
 
   return files
 }

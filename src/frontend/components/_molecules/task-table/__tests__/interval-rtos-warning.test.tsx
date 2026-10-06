@@ -1,9 +1,19 @@
 import { beforeEach, describe, expect, it } from '@jest/globals'
-import { render, screen } from '@testing-library/react'
+import { render as rtlRender, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
 
 import type { BoardInfo, PLCTask } from '../../../../../middleware/shared/ports/types'
-import { openPLCStoreBase } from '../../../../store'
+import type { OpenPLCStore } from '../../../../store'
+import { createStoreWrapper, createTestStore } from '../../../../store/testing'
 import { TaskTable } from '..'
+
+let store: OpenPLCStore
+
+beforeEach(() => {
+  store = createTestStore()
+})
+
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: createStoreWrapper(store) })
 
 const boards = new Map<string, BoardInfo>([
   ['ESP32-S3', { compiler: 'arduino-cli', core: 'esp32:esp32', preview: '', specs: {} }],
@@ -15,7 +25,7 @@ const tasks: PLCTask[] = [
 ]
 
 function select(vendorScreenData: Record<string, unknown>) {
-  openPLCStoreBase.setState((state) => ({
+  store.setState((state) => ({
     deviceAvailableOptions: { ...state.deviceAvailableOptions, availableBoards: boards },
     deviceDefinitions: {
       ...state.deviceDefinitions,

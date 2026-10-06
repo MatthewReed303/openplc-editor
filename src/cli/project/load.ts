@@ -21,7 +21,7 @@ import { HardwareModule } from '@root/backend/editor/hardware'
 import { LibraryManagerModule } from '@root/backend/editor/library-manager'
 import { ProjectService } from '@root/backend/editor/services'
 import { parseProjectFiles } from '@root/backend/shared/utils/parse-project-files'
-import { openPLCStoreBase } from '@root/frontend/store'
+import type { OpenPLCStore } from '@root/frontend/store'
 import { stlibsToSystemLibraries } from '@root/frontend/utils/stlib-to-system-library'
 import type { PLCProjectData } from '@root/middleware/shared/ports/types'
 
@@ -84,10 +84,10 @@ export function unreadableProtocolFilesMessage(project: LoadedProject): string |
  * built from, `listInstalled` carries the bundled flag the archive shape has no
  * room for.
  */
-function hydrateLibraries(): string[] {
+function hydrateLibraries(store: OpenPLCStore): string[] {
   try {
     const libraries = new LibraryManagerModule()
-    const actions = openPLCStoreBase.getState().libraryActions
+    const actions = store.getState().libraryActions
     actions.setSystemLibraries(stlibsToSystemLibraries(libraries.loadAll()))
     actions.setBundledLibraryNames(
       libraries
@@ -101,7 +101,7 @@ function hydrateLibraries(): string[] {
   }
 }
 
-export async function loadProject(projectPath: string): Promise<LoadProjectResult> {
+export async function loadProject(store: OpenPLCStore, projectPath: string): Promise<LoadProjectResult> {
   // The main process's own reader, so the CLI sees exactly the file set the
   // GUI sees — including the defaults it synthesises for missing device files.
   const raw = await new ProjectService().readRawProjectFiles(projectPath)
@@ -130,25 +130,22 @@ export async function loadProject(projectPath: string): Promise<LoadProjectResul
   // resolution and the debug-spec resolver both read `availableBoards`, and
   // `setAvailableOptions` is what re-syncs aliases for the active target. Without
   // it the store looks like an editor that has not finished starting up.
-  openPLCStoreBase
+  store
     .getState()
     .deviceActions.setAvailableOptions({ availableBoards: await new HardwareModule().getAvailableBoards() })
 
-  // The SHARED singleton, not a private instance. Everything the editor's own
-  // resolvers read comes off it — `buildDeviceResolverContext` reads the device
-  // configuration and runtime connection from `useOpenPLCStore.getState()`, and
-  // the debug tree builder reads the project. Hydrating a private store would
-  // leave those resolvers looking at an empty one, and the CLI would have to
-  // reimplement them. One project per process is the same assumption the editor
-  // makes, and a CLI invocation is one project.
+  // The process's one store, the same one the editor's own resolvers are handed
+  // (`buildDeviceResolverContext`, the debug tree builder), so the CLI resolves
+  // exactly what the GUI would. A CLI invocation is one project.
+  //
   // The library pool, BEFORE the project opens. `handleOpenProjectResponse`
   // reads `libraries.system` and re-stamps every placed block against it in the
   // same call, and `setProjectLibraries` derives the enabled/missing lists from
   // it — both see an empty pool if this runs after. Mirrors `hydrateLibraries`
   // in App.tsx, which is the renderer's equivalent.
-  const libraryWarnings = hydrateLibraries()
+  const libraryWarnings = hydrateLibraries(store)
 
-  openPLCStoreBase.getState().sharedWorkspaceActions.handleOpenProjectResponse(parsed)
+  store.getState().sharedWorkspaceActions.handleOpenProjectResponse(parsed)
 
   // Re-apply the board list now that the project is in the store. One migration
   // hangs off this action and reads project state: the fold of the pre-split
@@ -159,11 +156,11 @@ export async function loadProject(projectPath: string): Promise<LoadProjectResul
   // meaning a CLI compile and a GUI compile of the same on-disk project could
   // disagree. Idempotent by construction -- it returns the input unchanged when
   // nothing moved.
-  openPLCStoreBase
+  store
     .getState()
     .deviceActions.setAvailableOptions({ availableBoards: await new HardwareModule().getAvailableBoards() })
 
-  const state = openPLCStoreBase.getState()
+  const state = store.getState()
   return {
     success: true,
     project: {
@@ -193,7 +190,7 @@ export async function loadProject(projectPath: string): Promise<LoadProjectResul
  * into the compile arguments would build fine and then fail to resolve a debug
  * channel, for no visible reason.
  */
-export function applyConnectionOverrides(overrides: { port?: string; host?: string }): void {
+export function applyConnectionOverrides(store: OpenPLCStore, overrides: { port?: string; host?: string }): void {
   const patch: { communicationPort?: string; runtimeIpAddress?: string } = {}
   if (overrides.port) patch.communicationPort = overrides.port
   if (overrides.host) patch.runtimeIpAddress = overrides.host
@@ -212,6 +209,6 @@ export function applyConnectionOverrides(overrides: { port?: string; host?: stri
   //
   // It only showed on a board whose TCP channel is state-gated: the LOGO!'s is
   // `enabledWhen: true`, so it resolved either way and hid this.
-  const current = openPLCStoreBase.getState().deviceDefinitions.configuration
-  openPLCStoreBase.getState().deviceActions.setDeviceDefinitions({ configuration: { ...current, ...patch } })
+  const current = store.getState().deviceDefinitions.configuration
+  store.getState().deviceActions.setDeviceDefinitions({ configuration: { ...current, ...patch } })
 }

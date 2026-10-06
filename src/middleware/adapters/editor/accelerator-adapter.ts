@@ -19,6 +19,7 @@
  *   project:save-accelerator
  *   project:save-file-accelerator
  *   project:retrieve-accelerator
+ *   project:import-plcopen-accelerator
  *   workspace:close-project-accelerator
  *   compiler:export-project-request
  *   workspace:close-tab-accelerator
@@ -67,6 +68,10 @@ export function createEditorAcceleratorAdapter(): AcceleratorPort {
       return window.bridge.retrieveProjectAccelerator(() => callback())
     },
 
+    onImportPlcopen(callback: () => void): Unsubscribe {
+      return window.bridge.importPlcopenAccelerator(() => callback())
+    },
+
     onCloseProject(callback: () => void): Unsubscribe {
       return window.bridge.closeProjectAccelerator(() => callback())
     },
@@ -75,10 +80,6 @@ export function createEditorAcceleratorAdapter(): AcceleratorPort {
       return window.bridge.exportProjectRequest((_event: unknown, format: unknown) =>
         callback(format === 'codesys' ? 'codesys' : 'old-editor'),
       )
-    },
-
-    onImportProject(callback: () => void): Unsubscribe {
-      return window.bridge.importProjectRequest(() => callback())
     },
 
     onPrint(callback: () => void): Unsubscribe {

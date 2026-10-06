@@ -19,7 +19,7 @@ import { runProgramBuildPipeline } from '@root/backend/shared/library/program-bu
 import type { SchemaProjectData } from '@root/backend/shared/transpilers/st-transpiler'
 import { fromSchemaShape, transpileToSt } from '@root/backend/shared/transpilers/st-transpiler'
 import type { KnownPou } from '@root/backend/shared/utils/PLC/split-program-st'
-import { openPLCStoreBase } from '@root/frontend/store'
+import type { OpenPLCStore } from '@root/frontend/store'
 import { prepareProjectForCompile } from '@root/middleware/adapters/editor/compile-program-flow'
 import { toIpcProjectData } from '@root/middleware/adapters/editor/compiler-adapter'
 import type { PLCProjectData } from '@root/middleware/shared/ports/types'
@@ -33,7 +33,7 @@ import { lintProtocols } from '../lint/protocol'
 import type { CliResult, Reporter } from '../output'
 import { loadProject, unreadableProtocolFilesMessage } from '../project/load'
 
-export async function runCheck(args: ParsedArgs, reporter: Reporter): Promise<CliResult> {
+export async function runCheck(store: OpenPLCStore, args: ParsedArgs, reporter: Reporter): Promise<CliResult> {
   const projectPath = args.positionals[0] ?? stringFlag(args, 'project')
   if (!projectPath) {
     return reporter.failure(
@@ -42,7 +42,7 @@ export async function runCheck(args: ParsedArgs, reporter: Reporter): Promise<Cl
     )
   }
 
-  const loaded = await loadProject(projectPath)
+  const loaded = await loadProject(store, projectPath)
   if (!loaded.success) {
     return reporter.failure({ code: ErrorCode.ProjectNotFound, message: loaded.error }, ExitCode.NotFound)
   }
@@ -130,7 +130,7 @@ export async function runCheck(args: ParsedArgs, reporter: Reporter): Promise<Cl
       ...lintProgram({
         st: result.programSt,
         pous: preparation.prepared.processedData.pous,
-        systemLibraries: openPLCStoreBase.getState().libraries.system,
+        systemLibraries: store.getState().libraries.system,
         globals: loaded.project.compileReady.configurations?.resource?.globalVariables ?? [],
       }),
     )

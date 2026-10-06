@@ -63,12 +63,13 @@ import { useRuntimePolling } from '../hooks/use-runtime-polling'
 import { forceDebugVariable, releaseDebugVariable } from '../services/debug-force-variable'
 import { openPackageManagerTab } from '../services/open-package-manager-tab'
 import { buildAllProjectFileContentsPure } from '../services/save-actions'
-import { useOpenPLCStore } from '../store'
+import { useOpenPLCStore, useOpenPLCStoreApi } from '../store'
 import { cn } from '../utils/cn'
 import { buildGlobalCompositeKey, GLOBAL_CONFIG_NAME } from '../utils/debug-variable-finder'
 import { toast } from '../utils/toast'
 
 const WorkspaceScreen = () => {
+  const store = useOpenPLCStoreApi()
   const capabilities = useCapabilities()
   const ChatPanel = useChatPanel()
   const debuggerPort = useDebugger()
@@ -172,7 +173,7 @@ const WorkspaceScreen = () => {
       return
     }
 
-    const baselineContent = buildAllProjectFileContentsPure()
+    const baselineContent = buildAllProjectFileContentsPure(store)
 
     initBaseline({
       initialPending: [],
@@ -180,7 +181,7 @@ const WorkspaceScreen = () => {
       rawLoadedContent,
       loadedSerialized: baselineContent,
     })
-  }, [projectPath, rawLoadedContent, loadedSerialized, initBaseline])
+  }, [projectPath, rawLoadedContent, loadedSerialized, initBaseline, store])
 
   useRuntimePolling()
   // Mirrors a baremetal target's run/stop state from the held device link's existing liveness tick (no timer of its own).
@@ -293,14 +294,14 @@ const WorkspaceScreen = () => {
       if (!debuggerPort.isConnected()) return
 
       if (value === undefined && valueBuffer === undefined) {
-        await releaseDebugVariable(debuggerPort, compositeKey, variableIndex)
+        await releaseDebugVariable(store, debuggerPort, compositeKey, variableIndex)
       } else {
         const buffer = valueBuffer ?? new Uint8Array([value ? 1 : 0])
         // variableType lets the wire-endianness swap skip BOOL/STRING payloads (see services/debug-force-variable).
-        await forceDebugVariable(debuggerPort, compositeKey, variableIndex, buffer, value ?? true, variableType)
+        await forceDebugVariable(store, debuggerPort, compositeKey, variableIndex, buffer, value ?? true, variableType)
       }
     },
-    [debugVariableIndexes, debuggerPort],
+    [debugVariableIndexes, debuggerPort, store],
   )
 
   const [graphList, _setGraphList] = useState<string[]>([])
@@ -441,7 +442,7 @@ const WorkspaceScreen = () => {
   useEffect(() => {
     if (!packagesPort) return
 
-    const unsubOpen = packagesPort.onOpenManager(() => openPackageManagerTab())
+    const unsubOpen = packagesPort.onOpenManager(() => openPackageManagerTab(store))
 
     const unsubBoards = packagesPort.onBoardsUpdated(() => {
       void device.getAvailableBoards().then((boardsMap) => {
@@ -453,7 +454,7 @@ const WorkspaceScreen = () => {
       unsubOpen()
       unsubBoards()
     }
-  }, [packagesPort, device, setAvailableOptions])
+  }, [packagesPort, device, setAvailableOptions, store])
 
   // Which vPLC the IDE is pointed at decides which vendor package it can use:
   // a vPLC runs the package it was created with. Telling the package layer is

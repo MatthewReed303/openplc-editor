@@ -4,7 +4,7 @@ import { FocusEvent, memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { PLCVariable } from '../../../../../middleware/shared/ports/types'
 import { RefreshIcon } from '../../../../assets/icons/interface/Refresh'
 import { isBlockInstanceInScope } from '../../../../services/graphical-scope'
-import { useOpenPLCStore } from '../../../../store'
+import { useOpenPLCStore, useOpenPLCStoreApi } from '../../../../store'
 import { checkVariableName } from '../../../../store/slices/project/validation/variables'
 import { cn } from '../../../../utils/cn'
 import {
@@ -76,6 +76,7 @@ export const BlockNodeElement = <T extends object>({
   wrongVariable?: boolean
   scale?: number
 }) => {
+  const store = useOpenPLCStoreApi()
   const pouName = useBoundPou()
   const editor = useBoundEditorModel()
   const { updateModelVariables, updateModelFBD } = useOpenPLCStore((state) => state.editorActions)
@@ -134,7 +135,7 @@ export const BlockNodeElement = <T extends object>({
       return
     }
 
-    const { project, libraries, fbdFlows } = useOpenPLCStore.getState()
+    const { project, libraries, fbdFlows } = store.getState()
     const { pou, rung, node, variables, edges } = getFBDPouVariablesRungNodeAndEdges(
       pouName,
       project.data.pous,
@@ -153,7 +154,7 @@ export const BlockNodeElement = <T extends object>({
     }
 
     // Same reason as the ladder block: the library entry must travel with the project.
-    useOpenPLCStore.getState().libraryActions.ensureLibrariesForTypes([blockNameValue])
+    store.getState().libraryActions.ensureLibrariesForTypes([blockNameValue])
 
     if (!pou || !rung || !node) return
 
@@ -413,6 +414,7 @@ function libraryPouAsProjectPou(
 
 const Block = <T extends object>(block: BlockProps<T>) => {
   const { data, dragging, height, width, selected, id } = block
+  const store = useOpenPLCStoreApi()
   const pouName = useBoundPou()
   const pous = useOpenPLCStore((state) => state.project.data.pous)
   const createVariable = useOpenPLCStore((state) => state.projectActions.createVariable)
@@ -555,7 +557,7 @@ const Block = <T extends object>(block: BlockProps<T>) => {
       return
     }
 
-    const { fbdFlows } = useOpenPLCStore.getState()
+    const { fbdFlows } = store.getState()
     const { rung, node, variables } = getFBDPouVariablesRungNodeAndEdges(pouName, pous, fbdFlows, {
       nodeId: id,
     })
@@ -657,7 +659,7 @@ const Block = <T extends object>(block: BlockProps<T>) => {
   }
 
   const handleUpdateDivergence = () => {
-    const { fbdFlows, libraries } = useOpenPLCStore.getState()
+    const { fbdFlows, libraries } = store.getState()
     const { rung, node, pou } = getFBDPouVariablesRungNodeAndEdges(pouName, pous, fbdFlows, {
       nodeId: id,
     })

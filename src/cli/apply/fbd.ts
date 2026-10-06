@@ -7,7 +7,7 @@
  * signature, and reporting failures in the spec's own vocabulary.
  */
 
-import { openPLCStoreBase } from '@root/frontend/store'
+import type { OpenPLCStore } from '@root/frontend/store'
 import { buildFbdGraph, type FbdGraphNode } from '@root/frontend/store/slices/fbd/utils/build-graph'
 import { buildBlockVariant } from '@root/frontend/utils/PLC/block-variant'
 
@@ -96,9 +96,9 @@ function growExtensiblePin(
   return true
 }
 
-export function applyFbdBody(pouName: string, body: SpecFbdBody): string[] {
+export function applyFbdBody(store: OpenPLCStore, pouName: string, body: SpecFbdBody): string[] {
   const errors: string[] = []
-  const state = openPLCStoreBase.getState()
+  const state = store.getState()
 
   const nodes: FbdGraphNode[] = []
   for (const spec of body.nodes) {

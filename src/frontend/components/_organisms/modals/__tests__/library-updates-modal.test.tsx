@@ -1,13 +1,23 @@
-import { render, screen } from '@testing-library/react'
+import { render as rtlRender, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import userEvent from '@testing-library/user-event'
 
-import { useOpenPLCStore } from '@root/frontend/store'
+import type { OpenPLCStore } from '@root/frontend/store'
+import { createStoreWrapper, createTestStore } from '@root/frontend/store/testing'
 
 import { LibraryUpdatesModal } from '../library-updates-modal'
 
+let store: OpenPLCStore
+
+beforeEach(() => {
+  store = createTestStore()
+})
+
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: createStoreWrapper(store) })
+
 /** One library the project pins below a version already installed. */
 function seed(pinned = '0.1.0', available = ['0.2.0', '0.1.0']) {
-  useOpenPLCStore.setState((state) => ({
+  store.setState((state) => ({
     ...state,
     project: {
       ...state.project,
@@ -18,11 +28,11 @@ function seed(pinned = '0.1.0', available = ['0.2.0', '0.1.0']) {
     ),
     outdatedLibraries: [{ name: 'libtest-basic', pinned, available }],
   }))
-  useOpenPLCStore.getState().modalActions.openModal('library-updates')
+  store.getState().modalActions.openModal('library-updates')
 }
 
 const pinnedVersion = () =>
-  useOpenPLCStore.getState().project.data.libraries?.find((l) => l.name === 'libtest-basic')?.version
+  store.getState().project.data.libraries?.find((l) => l.name === 'libtest-basic')?.version
 
 describe('LibraryUpdatesModal', () => {
   it('lists the outdated library with the version in use', () => {
@@ -51,7 +61,7 @@ describe('LibraryUpdatesModal', () => {
     await user.click(screen.getByRole('button', { name: 'Update 1' }))
 
     expect(pinnedVersion()).toBe('0.2.0')
-    expect(useOpenPLCStore.getState().modals['library-updates']?.open).toBe(false)
+    expect(store.getState().modals['library-updates']?.open).toBe(false)
   })
 
   it('changes nothing when dismissed', async () => {

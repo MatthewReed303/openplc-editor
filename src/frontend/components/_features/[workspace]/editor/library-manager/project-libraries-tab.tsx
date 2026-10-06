@@ -27,7 +27,7 @@ import { MagnifierIcon } from '@root/frontend/assets/icons/interface/Magnifier'
 import { MinusIcon } from '@root/frontend/assets/icons/interface/Minus'
 import { PlusIcon } from '@root/frontend/assets/icons/interface/Plus'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@root/frontend/components/_atoms/select'
-import { useOpenPLCStore } from '@root/frontend/store'
+import { useOpenPLCStore, useOpenPLCStoreApi } from '@root/frontend/store'
 import { cn } from '@root/frontend/utils/cn'
 import type { InstalledLibrary } from '@root/middleware/shared/ports/library-types'
 import { useMemo, useState } from 'react'
@@ -46,6 +46,7 @@ interface ProjectLibrariesTabProps {
 }
 
 const ProjectLibrariesTab = ({ installed }: ProjectLibrariesTabProps) => {
+  const store = useOpenPLCStoreApi()
   const enabledNames = useOpenPLCStore((s) => s.enabledLibraries)
   const missingLibraries = useOpenPLCStore((s) => s.missingLibraries)
   const enableLibrary = useOpenPLCStore((s) => s.libraryActions.enableLibrary)
@@ -170,7 +171,7 @@ const ProjectLibrariesTab = ({ installed }: ProjectLibrariesTabProps) => {
                     setLibraryVersion(lib.name, version)
                     // Same as taking the update from the dialog: the pin and the
                     // placed blocks move together or they disagree.
-                    reconcilePlacedBlocks()
+                    reconcilePlacedBlocks(store)
                   }}
                 />
               ))}

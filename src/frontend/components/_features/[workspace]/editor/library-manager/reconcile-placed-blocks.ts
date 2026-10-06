@@ -10,7 +10,7 @@
 
 import { getBlockSize as fbdBlockSize } from '@root/frontend/components/_atoms/graphical-editor/fbd/utils/utils'
 import { getBlockSize as ladderBlockSize } from '@root/frontend/components/_atoms/graphical-editor/ladder/utils/utils'
-import { useOpenPLCStore } from '@root/frontend/store'
+import type { OpenPLCStore } from '@root/frontend/store'
 import type { MeasureBlock, RestampChange } from '@root/frontend/utils/PLC/restamp-library-variants'
 import { restampFlowLibraryVariants, summariseRestampChanges } from '@root/frontend/utils/PLC/restamp-library-variants'
 
@@ -25,8 +25,8 @@ const measureFbd = fbdBlockSize as unknown as MeasureBlock
  * Reports through the console and leaves the project unsaved when anything
  * changed. Returns the changes so callers can act on the breaking ones.
  */
-export function reconcilePlacedBlocks(): RestampChange[] {
-  const state = useOpenPLCStore.getState()
+export function reconcilePlacedBlocks(store: OpenPLCStore): RestampChange[] {
+  const state = store.getState()
   const systemLibraries = state.libraries.system
   const userPous = state.project.data.pous.filter((pou) => pou.pouType !== 'program')
 

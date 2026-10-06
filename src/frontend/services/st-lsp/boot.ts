@@ -17,6 +17,7 @@
  */
 
 import type { PlatformPorts } from '../../../middleware/shared/providers/types'
+import type { OpenPLCStore } from '../../store'
 import { toast } from '../../utils/toast'
 import { attachExecuteSync } from './execute-sync'
 import { startStLsp } from './index'
@@ -51,6 +52,7 @@ export interface StLspBootHandle {
  * entirely.
  */
 export function bootStLsp(
+  store: OpenPLCStore,
   ports: PlatformPorts,
   monaco: typeof import('monaco-editor'),
   workerUrl?: string,
@@ -68,6 +70,7 @@ export function bootStLsp(
   // promise; this callback fires only for crash-after-ready.
   let crashToastShown = false
   const service = startStLsp({
+    store,
     stlibSource: ports.stlibSource,
     monaco,
     ...(workerUrl ? { workerUrlOverride: workerUrl } : {}),
@@ -88,12 +91,12 @@ export function bootStLsp(
   // empty pous array if no project is loaded yet.  When the user
   // opens a project, the subscribe fires and the worker sees a
   // didOpen wave for every POU.
-  const projectSync = attachProjectSync(service)
+  const projectSync = attachProjectSync(store, service)
   // Execute ("ST Block") snippets live inside graphical bodies, which
   // project-sync sends to the worker as opaque signature stubs.  This
   // second sync gives each snippet its own document so it gets real
   // diagnostics instead of none.
-  const executeSync = attachExecuteSync(service)
+  const executeSync = attachExecuteSync(store, service)
   // Both library-sync layers force a document re-publish after the
   // stlib cache settles.  The worker doesn't re-run analysis on
   // cache mutations, so without this nudge documents keep their
@@ -101,9 +104,9 @@ export function bootStLsp(
   // diagnostics — most visibly: symbols from a just-disabled
   // library still resolve.
   const forceResync = () => projectSync.forceResync()
-  const unsubscribeLibrarySync = attachLibrarySync(service, forceResync)
-  const unsubscribeEnabledLibrariesSync = attachEnabledLibrariesSync(service, forceResync)
-  const unsubscribeBundledLibrariesSync = attachBundledLibrariesSync(service, forceResync)
+  const unsubscribeLibrarySync = attachLibrarySync(store, service, forceResync)
+  const unsubscribeEnabledLibrariesSync = attachEnabledLibrariesSync(store, service, forceResync)
+  const unsubscribeBundledLibrariesSync = attachBundledLibrariesSync(store, service, forceResync)
 
   // Pre-register Monaco models for every POU so cross-POU
   // references / peek-definition / go-to-references resolve through
@@ -111,7 +114,7 @@ export function bootStLsp(
   // found" for POUs the user hasn't opened yet.
   let modelSync: MonacoModelSyncHandle | null = null
   try {
-    modelSync = attachMonacoModelSync(monaco)
+    modelSync = attachMonacoModelSync(store, monaco)
   } catch (err) {
     // Don't let model-sync failure tear down the rest of the LSP —
     // the worst case is references stay broken (the pre-existing

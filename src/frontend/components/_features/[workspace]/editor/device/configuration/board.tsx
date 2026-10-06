@@ -14,7 +14,7 @@ import { useDeviceLicense } from '../../../../../../hooks/use-device-license'
 import { useRuntimeConnect } from '../../../../../../hooks/use-runtime-connect'
 import { boardSelectors, pinSelectors } from '../../../../../../hooks/use-store-selectors'
 import { openPackageManagerTab } from '../../../../../../services/open-package-manager-tab'
-import { useOpenPLCStore } from '../../../../../../store'
+import { useOpenPLCStore, useOpenPLCStoreApi } from '../../../../../../store'
 import type { RuntimeConnection } from '../../../../../../store/slices/device/types'
 import { cn } from '../../../../../../utils/cn'
 import { isEthernetUploadTarget, isOpenPLCRuntimeTarget, isSimulatorTarget } from '../../../../../../utils/device'
@@ -32,6 +32,7 @@ import { PinMappingTable } from './components/pin-mapping-table'
 import { RtosModeSwitch } from './components/rtos-mode-switch'
 
 const Board = memo(function () {
+  const store = useOpenPLCStoreApi()
   const capabilities = useCapabilities()
   const device = useDevice()
   const packages = usePackages()
@@ -332,7 +333,7 @@ const Board = memo(function () {
   const handleSetDeviceBoard = useCallback(
     (board: string) => {
       if (board === '__install_additional_boards__') {
-        openPackageManagerTab()
+        openPackageManagerTab(store)
         return
       }
 
@@ -398,6 +399,7 @@ const Board = memo(function () {
       setDeviceBoard(normalizedBoard)
     },
     [
+      store,
       connectionStatus,
       deviceBoard,
       setDeviceBoard,

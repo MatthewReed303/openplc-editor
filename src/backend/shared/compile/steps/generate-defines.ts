@@ -17,6 +17,8 @@
  * into the in-memory file map sent to `/compile-arduino`).
  */
 
+import type { PinPullSpec } from '../../../../middleware/shared/ports/types'
+import { PIN_PULL_CODES, resolveEffectivePinPull } from '../../../../middleware/shared/utils/pin-pull'
 import type { DevicePin } from '../../types/PLC/devices'
 import {
   DEBUG_SLAVE,
@@ -114,6 +116,10 @@ export interface GenerateDefinesInput {
    *  the scan does reach, which is what makes arduino-cli build them. Without
    *  it the archive compiles and then fails to link. */
   resourceLibraryDepends?: readonly string[]
+
+  /** The board's `pins.pull` spec. Present → `PINPULL_DIN` is emitted, one code per digital input
+   *  in `PINMASK_DIN` order; absent → nothing, and the HAL keeps plain `INPUT`. */
+  pinPull?: PinPullSpec
 }
 
 /**
@@ -148,6 +154,7 @@ export function generateDefinesContent(input: GenerateDefinesInput): string {
     networkInterfaces,
     retainBlobSize,
     resourceLibraryDepends,
+    pinPull,
   } = input
 
   let DEFINES_CONTENT = ''
@@ -262,6 +269,10 @@ export function generateDefinesContent(input: GenerateDefinesInput): string {
   DEFINES_CONTENT += `#define PINMASK_AIN ${analogInputPins.map(({ pin }) => pin).join(', ')}\n`
   DEFINES_CONTENT += `#define PINMASK_DOUT ${digitalOutputPins.map(({ pin }) => pin).join(', ')}\n`
   DEFINES_CONTENT += `#define PINMASK_AOUT ${analogOutputPins.map(({ pin }) => pin).join(', ')}\n`
+  if (pinPull) {
+    const codes = digitalInputPins.map((pin) => PIN_PULL_CODES[resolveEffectivePinPull(pinPull, pin)])
+    DEFINES_CONTENT += `#define PINPULL_DIN ${codes.join(', ')}\n`
+  }
 
   DEFINES_CONTENT += `#define NUM_DISCRETE_INPUT ${digitalInputPins.length}\n`
   DEFINES_CONTENT += `#define NUM_ANALOG_INPUT ${analogInputPins.length}\n`

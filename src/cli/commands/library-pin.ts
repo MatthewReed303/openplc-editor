@@ -16,7 +16,7 @@
  * may not import; the GUI reconciles on the next project open.
  */
 
-import { openPLCStoreBase } from '@root/frontend/store'
+import type { OpenPLCStore } from '@root/frontend/store'
 import type { FBDFlowType, LadderFlowType } from '@root/frontend/store/slices'
 import type { SystemLibrary } from '@root/frontend/store/slices/library/types'
 import { type ProjectLibraryRef, withProjectLibraries } from '@root/frontend/utils/PLC/project-libraries-json'
@@ -42,11 +42,11 @@ interface PinnedProject {
  * Load the project and hand back its current refs. `loadProject` hydrates the
  * library pool first, which is what makes the restamp below meaningful.
  */
-async function openForPinning(
+async function openForPinning(store: OpenPLCStore, 
   reporter: Reporter,
   projectPath: string,
 ): Promise<{ ok: true; project: PinnedProject } | { ok: false; result: CliResult }> {
-  const loaded = await loadProject(projectPath)
+  const loaded = await loadProject(store, projectPath)
   if (!loaded.success) {
     return {
       ok: false,
@@ -94,9 +94,9 @@ async function writeRefs(
  * become. Flows are cloned because the restamp mutates in place and the store
  * freezes its state.
  */
-function describePlacedBlockDrift(refs: ProjectLibraryRef[]): { changes: RestampChange[]; poolEmpty: boolean } {
-  openPLCStoreBase.getState().libraryActions.setProjectLibraries(refs)
-  const state = openPLCStoreBase.getState()
+function describePlacedBlockDrift(store: OpenPLCStore, refs: ProjectLibraryRef[]): { changes: RestampChange[]; poolEmpty: boolean } {
+  store.getState().libraryActions.setProjectLibraries(refs)
+  const state = store.getState()
   const systemLibraries: SystemLibrary[] = state.libraries.system
   const userPous = state.project.data.pous.filter((pou) => pou.pouType !== 'program')
 
@@ -124,7 +124,7 @@ function reportDrift(reporter: Reporter, drift: { changes: RestampChange[]; pool
   }
 }
 
-export async function runLibraryPin(
+export async function runLibraryPin(store: OpenPLCStore, 
   reporter: Reporter,
   projectPath: string | undefined,
   ref: string | undefined,
@@ -146,11 +146,11 @@ export async function runLibraryPin(
   const name = ref.slice(0, at)
   const version = ref.slice(at + 1)
 
-  const opened = await openForPinning(reporter, projectPath)
+  const opened = await openForPinning(store, reporter, projectPath)
   if (!opened.ok) return opened.result
 
   // Refuse a pin the compiler would only silently substitute later.
-  const installed = openPLCStoreBase
+  const installed = store
     .getState()
     .installedLibraries.filter((library: SystemLibrary) => library.name === name)
     .map((library: SystemLibrary) => library.version)
@@ -181,7 +181,7 @@ export async function runLibraryPin(
   }
 
   reporter.progress(previous === null ? `Added ${name} ${version}.` : `Repinned ${name} ${previous} → ${version}.`)
-  const drift = describePlacedBlockDrift(nextRefs)
+  const drift = describePlacedBlockDrift(store, nextRefs)
   reportDrift(reporter, drift)
 
   return reporter.success(
@@ -204,7 +204,7 @@ export async function runLibraryPin(
   )
 }
 
-export async function runLibraryUnpin(
+export async function runLibraryUnpin(store: OpenPLCStore, 
   reporter: Reporter,
   projectPath: string | undefined,
   name: string | undefined,
@@ -216,7 +216,7 @@ export async function runLibraryUnpin(
     )
   }
 
-  const opened = await openForPinning(reporter, projectPath)
+  const opened = await openForPinning(store, reporter, projectPath)
   if (!opened.ok) return opened.result
 
   const current = opened.project.refs.find((entry) => entry.name === name)

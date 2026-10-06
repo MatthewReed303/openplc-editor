@@ -1,7 +1,7 @@
 /**
  * Runtime Status screen (RTOP-283).
  *
- * Rendered against a mocked store and runtime port rather than a live device.
+ * Rendered against a fresh store and stub runtime port rather than a live device.
  * The web app reaches devices only through the orchestrator agent proxy, so a
  * browser walkthrough of this screen would need an orchestrator, an Edge API
  * and a registered device -- none of which make a useful regression test. What
@@ -11,63 +11,16 @@
  * visible from a screenshot anyway.
  */
 
-import { render, screen, waitFor } from '@testing-library/react'
-
-const getDeviceInfo = vi.fn()
-const getCapabilities = vi.fn()
-const bootloaderLogin = vi.fn()
-const getStatus = vi.fn()
-
-/** Typed, so reading the action spies back needs no cast. */
-type MockStore = {
-  runtimeConnection: Record<string, unknown>
-  deviceActions: Record<string, ReturnType<typeof vi.fn>>
-  deviceConnection: { status: string; port: string | null }
-  deviceDefinitions: { configuration: { deviceBoard: string; vendorScreenData: Record<string, unknown> } }
-  deviceAvailableOptions: { availableBoards: Map<string, unknown> }
-  project: { data: { configurations: { resource: { tasks: unknown[] } } } }
-}
-
-let storeState: MockStore
-
-const getOrchestratorHostInfo = vi.fn()
-const readTaskStats = vi.fn()
-// One object, as the platform's device port is: the screen's polling restarts
-// whenever the device it reads from changes.
-const mockBoardDevice = { readTaskStats }
-
-vi.mock('@root/middleware/shared/providers/platform-context', () => ({
-  // The production source of these facts for an orchestrator-managed device,
-  // which has no bootloader container to ask.
-  useOrchestrator: () => ({ getOrchestratorHostInfo }),
-  // A baremetal board reports its tasks over the device link instead.
-  useDevice: () => mockBoardDevice,
-  useRuntime: () => ({
-    bootloader: {
-      getCapabilities,
-      login: bootloaderLogin,
-      getStatus,
-      getDeviceInfo,
-      getRuntimeLogs: vi.fn(),
-      startUpdate: vi.fn(),
-      getUpdateProgress: vi.fn().mockResolvedValue({ success: false, error: 'none' }),
-      restartRuntime: vi.fn(),
-      clearSession: vi.fn(),
-    },
-  }),
-}))
-
-// Mocked through the @root alias rather than a relative path: Jest resolves
-// a mock path relative to its setup file, not the test, so a relative one
-// fails there while working under Vitest. The alias resolves to the same
-// module in both, which keeps this file identical across the two apps.
-vi.mock('@root/frontend/store', () => {
-  const useOpenPLCStore = (selector: (state: unknown) => unknown) => selector(storeState)
-  // The screen reads the store directly when comparing the reported runtime
-  // version, to avoid putting it in a dependency list.
-  useOpenPLCStore.getState = () => storeState
-  return { useOpenPLCStore }
-})
+import type { OpenPLCStore } from '@root/frontend/store'
+import type { RuntimeConnection } from '@root/frontend/store/slices/device/types'
+import { createStoreWrapper, createTestStore } from '@root/frontend/store/testing'
+import type { DevicePort } from '@root/middleware/shared/ports/device-port'
+import type { OrchestratorPort } from '@root/middleware/shared/ports/orchestrator-port'
+import { WEB_CAPABILITIES } from '@root/middleware/shared/ports/platform-capabilities'
+import type { BootloaderPort, RuntimePort } from '@root/middleware/shared/ports/runtime-port'
+import type { PlatformPorts } from '@root/middleware/shared/providers/types'
+import { render as rtlRender, screen, waitFor } from '@testing-library/react'
+import type { ReactElement } from 'react'
 
 // The statistics panels are exercised by their own tests; here they would only
 // add noise and a dependency on live timing data.
@@ -77,51 +30,90 @@ vi.mock('@root/frontend/components/_molecules/scan-cycle-stats', () => ({ ScanCy
 
 import { RuntimeStatusEditor } from '../index'
 
-/** A connected device, built fresh per test so the action spies are clean. */
-const connectedState = (overrides: Record<string, unknown> = {}) => ({
-  runtimeConnection: {
-    connectionStatus: 'connected',
-    runtimeVersion: 'v4.2.1',
-    ipAddress: '192.168.1.112',
-    // The two ids are deliberately DISTINCT: the record PK and the agent id are
-    // different values in production, and RTOP-289 was passing the record id
-    // where the agent id was required. A fixture that used one value for both
-    // let the bug pass — see the 'queries host info by agent id' test below.
-    selectedDevice: {
-      orchestratorId: 'record-1',
-      orchestratorAgentId: 'agent-1',
-      deviceId: 'd1',
-      deviceName: '192.168.2.4',
+function stubPort<T extends object>(overrides: Partial<T> = {}): T {
+  return new Proxy(overrides as T, {
+    get(target, prop, receiver) {
+      if (prop in target) return Reflect.get(target, prop, receiver)
+      return typeof prop === 'string' ? () => undefined : undefined
     },
-    timingStats: null,
-    storedCredentials: { username: 'op', password: 'op' },
-    ...overrides,
-  },
-  deviceConnection: { status: 'disconnected', port: null },
-  deviceDefinitions: { configuration: { deviceBoard: 'OpenPLC Runtime v4', vendorScreenData: {} } },
-  deviceAvailableOptions: { availableBoards: new Map() },
-  project: {
-    data: {
-      configurations: {
-        resource: { tasks: [{ name: 'main', triggering: 'Cyclic', interval: 'T#10ms', priority: 0 }] },
+  })
+}
+
+const getDeviceInfo = vi.fn()
+const getCapabilities = vi.fn()
+const bootloaderLogin = vi.fn()
+const getStatus = vi.fn()
+const getOrchestratorHostInfo = vi.fn()
+const readTaskStats = vi.fn()
+
+const ports: PlatformPorts = {
+  compiler: stubPort(),
+  runtime: stubPort<RuntimePort>({
+    bootloader: stubPort<BootloaderPort>({
+      getCapabilities,
+      login: bootloaderLogin,
+      getStatus,
+      getDeviceInfo,
+      getRuntimeLogs: vi.fn(),
+      startUpdate: vi.fn(),
+      getUpdateProgress: vi.fn().mockResolvedValue({ success: false, error: 'none' }),
+      restartRuntime: vi.fn(),
+      clearSession: vi.fn(),
+    }),
+  }),
+  debugger: stubPort(),
+  simulator: stubPort(),
+  project: stubPort(),
+  // A baremetal board reports its tasks over the device link instead. One
+  // object, as the platform's device port is: the screen's polling restarts
+  // whenever the device it reads from changes.
+  device: stubPort<DevicePort>({ readTaskStats }),
+  // The production source of these facts for an orchestrator-managed device,
+  // which has no bootloader container to ask.
+  orchestrator: stubPort<OrchestratorPort>({ getOrchestratorHostInfo }),
+  system: stubPort(),
+  window: stubPort(),
+  accelerator: stubPort(),
+  theme: stubPort(),
+  versionControl: stubPort(),
+  navigation: stubPort(),
+  library: stubPort(),
+  capabilities: WEB_CAPABILITIES,
+}
+
+let store: OpenPLCStore
+
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: createStoreWrapper(store, ports) })
+
+/** A connected device, written over a fresh store's runtime connection. */
+const connectedState = (overrides: Partial<RuntimeConnection> = {}) => {
+  store.setState((state) => ({
+    runtimeConnection: {
+      ...state.runtimeConnection,
+      connectionStatus: 'connected',
+      runtimeVersion: 'v4.2.1',
+      ipAddress: '192.168.1.112',
+      // The two ids are deliberately DISTINCT: the record PK and the agent id are
+      // different values in production, and RTOP-289 was passing the record id
+      // where the agent id was required. A fixture that used one value for both
+      // let the bug pass — see the 'queries host info by agent id' test below.
+      selectedDevice: {
+        orchestratorId: 'record-1',
+        orchestratorAgentId: 'agent-1',
+        deviceId: 'd1',
+        deviceName: '192.168.2.4',
       },
+      timingStats: null,
+      storedCredentials: { username: 'op', password: 'op' },
+      ...overrides,
     },
-  },
-  deviceActions: {
-    setIncludeTimingStatsInPolling: vi.fn(),
-    setIncludeEthercatStatsInPolling: vi.fn(),
-    // The version dialog renders inside this screen and suspends status
-    // polling while a swap runs.
-    setRuntimeUpdateInProgress: vi.fn(),
-    // Written after an install so the header and the picker agree on what is
-    // running.
-    setRuntimeVersion: vi.fn(),
-  },
-})
+  }))
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
-  storeState = connectedState()
+  store = createTestStore()
+  connectedState()
   getDeviceInfo.mockResolvedValue({ success: false, error: 'not supported' })
   getOrchestratorHostInfo.mockResolvedValue(null)
   getCapabilities.mockResolvedValue({ success: false, error: 'No bootloader on this device' })
@@ -147,7 +139,7 @@ const withBootloader = () => {
 
 describe('Runtime Status', () => {
   it('asks the operator to connect before showing anything', () => {
-    storeState = connectedState({ connectionStatus: 'disconnected' })
+    connectedState({ connectionStatus: 'disconnected' })
     render(<RuntimeStatusEditor />)
     expect(screen.getByText(/connect to a runtime/i)).toBeTruthy()
   })
@@ -225,7 +217,7 @@ describe('Runtime Status', () => {
     // runtime version.
     withBootloader()
     getDeviceInfo.mockResolvedValue({ success: true, data: { hostname: 'slm-rp4', kernel: '6.12.35-rt10-v8+' } })
-    storeState = connectedState({ runtimeVersion: 'v4.1.0' })
+    connectedState({ runtimeVersion: 'v4.1.0' })
 
     render(<RuntimeStatusEditor />)
 
@@ -237,15 +229,16 @@ describe('Runtime Status', () => {
     // These toggles moved here from the screens that used to show the stats.
     // Without them the screen would render empty panels forever; without the
     // cleanup, a device would be polled for data nobody is looking at.
-    const actions = storeState.deviceActions
+    const polling = () => {
+      const { includeTimingStatsInPolling, includeEthercatStatsInPolling } = store.getState().runtimeConnection
+      return { includeTimingStatsInPolling, includeEthercatStatsInPolling }
+    }
     const { unmount } = render(<RuntimeStatusEditor />)
 
-    expect(actions.setIncludeTimingStatsInPolling).toHaveBeenCalledWith(true)
-    expect(actions.setIncludeEthercatStatsInPolling).toHaveBeenCalledWith(true)
+    expect(polling()).toEqual({ includeTimingStatsInPolling: true, includeEthercatStatsInPolling: true })
 
     unmount()
-    expect(actions.setIncludeTimingStatsInPolling).toHaveBeenCalledWith(false)
-    expect(actions.setIncludeEthercatStatsInPolling).toHaveBeenCalledWith(false)
+    expect(polling()).toEqual({ includeTimingStatsInPolling: false, includeEthercatStatsInPolling: false })
   })
 })
 
@@ -289,7 +282,7 @@ describe('Which device the header names', () => {
     // The desktop editor connects straight to an IP and has no device record,
     // so that address is the only identity available before the bootloader
     // answers.
-    storeState = connectedState({ selectedDevice: null, ipAddress: '192.168.2.4' })
+    connectedState({ selectedDevice: null, ipAddress: '192.168.2.4' })
     render(<RuntimeStatusEditor />)
     await waitFor(() => expect(screen.getByText(/192\.168\.2\.4/)).toBeTruthy())
   })
@@ -373,16 +366,35 @@ describe('A device with no bootloader', () => {
 
 describe('A baremetal board that can run RTOS mode', () => {
   /** An ESP32 connected over its device link, with no runtime session. */
-  const boardState = (vendorScreenData: Record<string, unknown> = {}) => ({
-    ...connectedState({ connectionStatus: 'disconnected' }),
-    deviceConnection: { status: 'connected', port: '/dev/ttyACM0' },
-    deviceDefinitions: { configuration: { deviceBoard: 'ESP32-S3', vendorScreenData } },
-    deviceAvailableOptions: {
-      availableBoards: new Map([
-        ['ESP32-S3', { compiler: 'arduino-cli', core: 'esp32:esp32', preview: '', specs: {} }],
-      ]),
-    },
-  })
+  const boardState = (vendorScreenData: Record<string, unknown> = {}) => {
+    connectedState({ connectionStatus: 'disconnected' })
+    store.setState((state) => ({
+      deviceConnection: { ...state.deviceConnection, status: 'connected', port: '/dev/ttyACM0' },
+      deviceDefinitions: {
+        ...state.deviceDefinitions,
+        configuration: { ...state.deviceDefinitions.configuration, deviceBoard: 'ESP32-S3', vendorScreenData },
+      },
+      deviceAvailableOptions: {
+        ...state.deviceAvailableOptions,
+        availableBoards: new Map([
+          ['ESP32-S3', { compiler: 'arduino-cli', core: 'esp32:esp32', preview: '', specs: {} }],
+        ]) as unknown as typeof state.deviceAvailableOptions.availableBoards,
+      },
+      project: {
+        ...state.project,
+        data: {
+          ...state.project.data,
+          configurations: {
+            ...state.project.data.configurations,
+            resource: {
+              ...state.project.data.configurations.resource,
+              tasks: [{ name: 'main', triggering: 'Cyclic', interval: 'T#10ms', priority: 0 }],
+            },
+          },
+        },
+      },
+    }))
+  }
 
   const stats = (tasks: unknown[] = []) => ({
     success: true,
@@ -402,7 +414,7 @@ describe('A baremetal board that can run RTOS mode', () => {
   const SECOND_READ = { timeout: 3000 }
 
   it('shows what the board reports about its tasks, not a runtime prompt', async () => {
-    storeState = boardState()
+    boardState()
     readTaskStats.mockResolvedValue(stats())
 
     render(<RuntimeStatusEditor />)
@@ -415,7 +427,7 @@ describe('A baremetal board that can run RTOS mode', () => {
   })
 
   it('names a task stuck in one scan, which finished none to show in the table', async () => {
-    storeState = boardState()
+    boardState()
     readTaskStats.mockResolvedValue(
       stats([
         {
@@ -444,7 +456,7 @@ describe('A baremetal board that can run RTOS mode', () => {
   })
 
   it('asks the board even with the switch off, since its firmware may be another build', async () => {
-    storeState = boardState({ rtos: { enabled: false } })
+    boardState({ rtos: { enabled: false } })
     readTaskStats.mockResolvedValue(stats())
 
     render(<RuntimeStatusEditor />)
@@ -453,7 +465,7 @@ describe('A baremetal board that can run RTOS mode', () => {
   })
 
   it('shows no mode until the board has answered', () => {
-    storeState = boardState()
+    boardState()
     readTaskStats.mockReturnValue(new Promise(() => {}))
 
     render(<RuntimeStatusEditor />)
@@ -463,7 +475,7 @@ describe('A baremetal board that can run RTOS mode', () => {
   })
 
   it('says so when the board runs the single loop', async () => {
-    storeState = boardState()
+    boardState()
     readTaskStats.mockResolvedValue({ success: false, unsupported: true })
 
     render(<RuntimeStatusEditor />)

@@ -23,7 +23,7 @@ import { useDebugPolling } from '../../../hooks/useDebugPolling'
 import { useDebugSession } from '../../../hooks/useDebugSession'
 import { buildDeviceResolverContext, showDeviceDialog, showDeviceInput } from '../../../services/device-link-resolution'
 import { executeSaveProject } from '../../../services/save-actions'
-import { useOpenPLCStore } from '../../../store'
+import { useOpenPLCStore, useOpenPLCStoreApi } from '../../../store'
 import type { RuntimeConnection } from '../../../store/slices/device/types'
 import { cn } from '../../../utils/cn'
 import { logCompilerEvent } from '../../../utils/debugger-session'
@@ -56,6 +56,7 @@ type DefaultWorkspaceActivityBarProps = {
 }
 
 export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBarProps) => {
+  const store = useOpenPLCStoreApi()
   const {
     project: { data: projectData, meta: projectMeta },
     deviceDefinitions,
@@ -207,7 +208,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
   useEffect(() => {
     if (deviceConnectionStatus === 'connected') return
     if (!debugSessionRidesDeviceRef.current) return
-    if (!useOpenPLCStore.getState().workspace.isDebuggerVisible) return
+    if (!store.getState().workspace.isDebuggerVisible) return
 
     addLog({
       level: 'warning',
@@ -215,7 +216,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
     })
     debugSessionRidesDeviceRef.current = false
     void debugSession.stopSession()
-  }, [deviceConnectionStatus, debugSession, addLog])
+  }, [deviceConnectionStatus, debugSession, addLog, store])
 
   // Stop simulator if the board is switched away while it's running
   const prevIsSimulatorBoardRef = useRef(isSimulatorBoard)
@@ -230,11 +231,11 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
       })
       void simulator.stop()
       if (isDebuggerVisible) {
-        const { workspaceActions } = useOpenPLCStore.getState()
+        const { workspaceActions } = store.getState()
         workspaceActions.clearDebugState()
       }
     }
-  }, [isSimulatorBoard, isDebuggerVisible, simulator, addLog])
+  }, [isSimulatorBoard, isDebuggerVisible, simulator, addLog, store])
 
   const executeSave = useCallback(async (): Promise<boolean> => {
     // 'pre-build', not a user save: the compiler reads source from disk, so
@@ -242,9 +243,9 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
     // no chosen location yet. Refusing it would not protect that project, it
     // would just stop it compiling. The user-facing Save is the one that is
     // gated, in executeSaveProject.
-    const result = await executeSaveProject(projectPort, capabilities, 'pre-build')
+    const result = await executeSaveProject(store, projectPort, capabilities, 'pre-build')
     return result.success
-  }, [projectPort, capabilities])
+  }, [projectPort, capabilities, store])
 
   // ---------------------------------------------------------------------------
   // Build (Compile)
@@ -271,7 +272,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
       // serial-only driver would come up silently wrong instead of failing at HAL
       // init.
       {
-        const state = useOpenPLCStore.getState()
+        const state = store.getState()
         const boardInfo = state.deviceAvailableOptions.availableBoards.get(
           state.deviceDefinitions.configuration.deviceBoard,
         )
@@ -325,7 +326,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
       // connected to a RUNNING runtime, require the user to stop the PLC first
       // and, on their consent, stop it before compiling.
       {
-        const state = useOpenPLCStore.getState()
+        const state = store.getState()
         const boardInfo = state.deviceAvailableOptions.availableBoards.get(
           state.deviceDefinitions.configuration.deviceBoard,
         )
@@ -340,6 +341,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
         })
         if (gate.kind === 'must-stop') {
           const response = await showDeviceDialog(
+            store,
             'warning',
             'Stop PLC',
             'The PLC must be stopped before continuing.',
@@ -367,7 +369,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
             setIsCompiling(false)
             return
           }
-          useOpenPLCStore.getState().deviceActions.setPlcRuntimeStatus('STOPPED')
+          store.getState().deviceActions.setPlcRuntimeStatus('STOPPED')
           addLog({ level: 'info', message: 'PLC stopped before build.' })
         }
       }
@@ -379,7 +381,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
       // → current address, literal → verbatim, missing → unlocated). The
       // compile pipeline reads `variable.location` verbatim — it never sees
       // aliases.
-      const freshProjectData = useOpenPLCStore.getState().projectActions.getCompileReadyProjectData()
+      const freshProjectData = store.getState().projectActions.getCompileReadyProjectData()
 
       // Serial handoff (D72): a held device connection owns the serial port that
       // arduino-cli needs for a direct-USB upload. Release it before the build so
@@ -394,10 +396,10 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
       // working across the upload; disconnecting unconditionally used to throw it
       // away. `released` also tells us whether to reconnect afterwards.
       let serialWasReleased = false
-      if (willUpload && useOpenPLCStore.getState().deviceConnection.status === 'connected') {
+      if (willUpload && store.getState().deviceConnection.status === 'connected') {
         try {
           serialWasReleased = await device.releaseSerialPort(
-            useOpenPLCStore.getState().deviceDefinitions.configuration.communicationPort ?? null,
+            store.getState().deviceDefinitions.configuration.communicationPort ?? null,
           )
         } catch {
           // best-effort: never block a build on the handoff.
@@ -410,7 +412,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
       // afterwards, only if it was connected here.
       const willEthUpload = doUpload && isEthernetUpload
       let ethWasConnected = false
-      if (willEthUpload && useOpenPLCStore.getState().deviceConnection.status === 'connected') {
+      if (willEthUpload && store.getState().deviceConnection.status === 'connected') {
         ethWasConnected = true
         try {
           await device.disconnect()
@@ -452,7 +454,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
           },
           (event) => {
             if (event.plcStatus) {
-              useOpenPLCStore
+              store
                 .getState()
                 .deviceActions.setPlcRuntimeStatus(event.plcStatus as NonNullable<RuntimeConnection['plcStatus']>)
             }
@@ -477,7 +479,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
         // uploaded to). Advance the connect/upload IP to it, so the reconnect —
         // and every later upload/connect — targets where the device actually is.
         if (willEthUpload && result.success) {
-          const cfg = useOpenPLCStore.getState().deviceDefinitions.configuration
+          const cfg = store.getState().deviceDefinitions.configuration
           const vsd = (cfg.vendorScreenData ?? {}) as {
             modbus_tcp?: { ip_address?: string }
             network?: { enable_dhcp?: boolean; ip_address?: string }
@@ -490,6 +492,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
           // exists — showDeviceInput → debugger-ip-input) rather than guess.
           if (vsd.network?.enable_dhcp) {
             const entered = await showDeviceInput(
+              store,
               'Device IP address',
               'This target uses DHCP, so its address is assigned by the network and the editor ' +
                 'cannot know it. Enter the IP the device came up on to reconnect and for later uploads.',
@@ -497,12 +500,12 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
             )
             const trimmed = entered?.trim()
             if (trimmed) {
-              useOpenPLCStore.getState().deviceActions.setRuntimeIpAddress(trimmed)
+              store.getState().deviceActions.setRuntimeIpAddress(trimmed)
             }
           } else {
             const newIp = vsd.modbus_tcp?.ip_address || vsd.network?.ip_address
             if (newIp && newIp !== cfg.runtimeIpAddress) {
-              useOpenPLCStore.getState().deviceActions.setRuntimeIpAddress(newIp)
+              store.getState().deviceActions.setRuntimeIpAddress(newIp)
             }
           }
         }
@@ -538,7 +541,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
           // `deferPrompts`: silent and automatic (the user just flashed), so it
           // must never pop an address dialog behind their back. A DHCP-only
           // target simply stays disconnected until they press Connect.
-          const candidates = resolveDeviceLinkCandidates(spec, buildDeviceResolverContext(boardTarget), {
+          const candidates = resolveDeviceLinkCandidates(spec, buildDeviceResolverContext(store, boardTarget), {
             transports: caps.debuggerTransports,
             deferPrompts: true,
           })
@@ -567,6 +570,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
       jwtToken,
       runtime,
       requestConsoleFollow,
+      store,
     ],
   )
 
@@ -685,7 +689,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
       if (!saved) return
     }
 
-    const harness = composeLibraryDebugHarness(useOpenPLCStore.getState().project.data)
+    const harness = composeLibraryDebugHarness(store.getState().project.data)
 
     for (const skip of harness.skipped) {
       addLog({ level: 'warning', message: `${skip.pouName}: ${skip.reason}` })
@@ -711,7 +715,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
     // Installed BEFORE the compile so the debug session that the firmware event
     // triggers can already see it.  `clearDebugState()` drops it when the
     // session ends.
-    useOpenPLCStore.getState().workspaceActions.setDebugHarness({
+    store.getState().workspaceActions.setDebugHarness({
       programPou: harness.programPou,
       instances: harness.projectData.configurations.resource.instances,
     })
@@ -739,20 +743,20 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
             // generated program that is not running.
             void simulatorRun.launch(event.firmwarePath, { attachDebugger: true }).then((launched) => {
               if (!launched) {
-                useOpenPLCStore.getState().workspaceActions.setDebugHarness(null)
+                store.getState().workspaceActions.setDebugHarness(null)
               }
             })
           }
         },
       )
       if (!result.success) {
-        useOpenPLCStore.getState().workspaceActions.setDebugHarness(null)
+        store.getState().workspaceActions.setDebugHarness(null)
         if (!streamedError) {
           addLog({ level: 'error', message: result.error ?? 'Harness compilation failed' })
         }
       }
     } catch (err: unknown) {
-      useOpenPLCStore.getState().workspaceActions.setDebugHarness(null)
+      store.getState().workspaceActions.setDebugHarness(null)
       addLog({ level: 'error', message: `Library debug error: ${getErrorMessage(err)}` })
     } finally {
       setIsCompiling(false)
@@ -767,6 +771,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
     requestConsoleFollow,
     simulatorRun,
     simulatorRunning,
+    store,
   ])
 
   // ---------------------------------------------------------------------------
@@ -782,16 +787,20 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
    * package provides it, so a P1AM says "CPU switch" rather than the generic
    * wording.
    */
-  const warnSwitchInStop = useCallback(async (deviceName: string, switchLabel?: string): Promise<void> => {
-    await showDeviceDialog(
-      'warning',
-      'Device is in STOP',
-      `The ${switchLabel ?? 'mode switch'} on ${deviceName} is in the STOP position. ` +
-        'The PLC cannot be started from the editor while the switch is in STOP.\n\n' +
-        'Flip the switch to RUN and try again.',
-      ['OK'],
-    )
-  }, [])
+  const warnSwitchInStop = useCallback(
+    async (deviceName: string, switchLabel?: string): Promise<void> => {
+      await showDeviceDialog(
+        store,
+        'warning',
+        'Device is in STOP',
+        `The ${switchLabel ?? 'mode switch'} on ${deviceName} is in the STOP position. ` +
+          'The PLC cannot be started from the editor while the switch is in STOP.\n\n' +
+          'Flip the switch to RUN and try again.',
+        ['OK'],
+      )
+    },
+    [store],
+  )
 
   const handlePlcControl = useCallback(async (): Promise<void> => {
     const boardTarget = deviceDefinitions.configuration.deviceBoard
@@ -857,7 +866,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
       // keeps the button responsive without a round trip that could still read the
       // pre-change value.
       if (result.state !== undefined) {
-        useOpenPLCStore
+        store
           .getState()
           .deviceActions.setPlcRuntimeStatus(
             (result.state === 1 ? 'RUNNING' : result.state === 2 ? 'ERROR' : 'STOPPED') as NonNullable<
@@ -876,6 +885,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
     debuggerPort,
     addLog,
     warnSwitchInStop,
+    store,
   ])
 
   const handleSimulatorControl = useCallback(async (): Promise<void> => {
@@ -896,12 +906,13 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
   // ---------------------------------------------------------------------------
 
   const handleMd5Verification = async (projectPath: string, boardTarget: string, isRuntimeTarget: boolean) => {
-    const { consoleActions, runtimeConnection, deviceActions } = useOpenPLCStore.getState()
+    const { consoleActions, runtimeConnection, deviceActions } = store.getState()
 
     try {
       // If runtime target + PLC stopped, offer to start
       if (isRuntimeTarget && runtimeConnection.plcStatus === 'STOPPED' && runtimeConnection.jwtToken) {
         const response = await showDeviceDialog(
+          store,
           'question',
           'PLC Stopped',
           'The PLC is currently stopped. The debugger requires the PLC to be running. Would you like to start the PLC now?',
@@ -920,6 +931,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
         }
         if (!startResult.success) {
           await showDeviceDialog(
+            store,
             'error',
             'Start PLC Failed',
             `Could not start the PLC: ${startResult.error || 'Unknown error'}`,
@@ -936,7 +948,9 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
       consoleActions.addLog({ level: 'info', message: 'Verifying program MD5...' })
       const md5Result = await debuggerPort.readProgramMd5(projectPath, boardTarget)
       if (!md5Result.success || !md5Result.md5) {
-        await showDeviceDialog('error', 'MD5 Extraction Failed', md5Result.error ?? 'Could not extract MD5', ['OK'])
+        await showDeviceDialog(store, 'error', 'MD5 Extraction Failed', md5Result.error ?? 'Could not extract MD5', [
+          'OK',
+        ])
         setIsDebuggerProcessing(false)
         return
       }
@@ -947,6 +961,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
       const preConnectResult = await debuggerPort.connect()
       if (!preConnectResult.success) {
         await showDeviceDialog(
+          store,
           'error',
           "Can't Start Debugger",
           `Can't start the debugger — ${preConnectResult.error ?? 'unknown error'}.`,
@@ -960,6 +975,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
       if (!verifyResult.success) {
         await debuggerPort.disconnect()
         await showDeviceDialog(
+          store,
           'error',
           'Connection Error',
           `Could not verify MD5: ${verifyResult.error ?? 'Unknown error'}`,
@@ -976,7 +992,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
         // read / write boundaries flips on BE targets.  Default to
         // `'le'` when the trailer was missing or malformed (older
         // runtimes); detectTargetEndian already logged a warning.
-        useOpenPLCStore.getState().workspaceActions.setDebugTargetEndian(verifyResult.targetEndian ?? 'le')
+        store.getState().workspaceActions.setDebugTargetEndian(verifyResult.targetEndian ?? 'le')
         await debugSession.connectAndStart()
         setIsDebuggerProcessing(false)
       } else {
@@ -1000,7 +1016,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
         // `isDebuggerProcessing` is released exactly as the declined-upload branch
         // below releases it, so the session ends the way "No" ends it.
         {
-          const state = useOpenPLCStore.getState()
+          const state = store.getState()
           const gate = evaluateVppBackplaneGate(
             vppGateStateFor({
               board: state.deviceAvailableOptions.availableBoards.get(boardTarget),
@@ -1017,6 +1033,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
         }
 
         const response = await showDeviceDialog(
+          store,
           'warning',
           'Program Mismatch',
           'The program on the target does not match. Upload the current project?',
@@ -1024,9 +1041,9 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
         )
         if (response === 0) {
           const runtimeIpAddress = deviceDefinitions.configuration.runtimeIpAddress || null
-          const runtimeJwtToken = useOpenPLCStore.getState().runtimeConnection.jwtToken || null
+          const runtimeJwtToken = store.getState().runtimeConnection.jwtToken || null
           // See the handleBuild call above — compile-time alias resolution.
-          const freshProjectData = useOpenPLCStore.getState().projectActions.getCompileReadyProjectData()
+          const freshProjectData = store.getState().projectActions.getCompileReadyProjectData()
           const compileResult = await compiler.compileProgram(
             {
               projectData: freshProjectData,
@@ -1084,7 +1101,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
     // which means nothing for an emulator, so the simulator still stops short
     // of it.
 
-    const { workspace, project, deviceDefinitions: devDefs, consoleActions } = useOpenPLCStore.getState()
+    const { workspace, project, deviceDefinitions: devDefs, consoleActions } = store.getState()
 
     // Toggle off
     if (workspace.isDebuggerVisible) {
@@ -1137,7 +1154,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
       // One question for every target: does the manager hold a session? A simulator's
       // session is its running emulator, a device's is Connect, a runtime's is the
       // login — all three publish the same status.
-      const sessionStatus = useOpenPLCStore.getState().deviceConnection.status
+      const sessionStatus = store.getState().deviceConnection.status
       addLog({
         level: 'info',
         message: `[connection] debug session requested for ${boardTarget}; session is "${sessionStatus}"`,
@@ -1160,6 +1177,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
         // branching on platform.
         if (!offerSimulatorStart && needsDeviceSelection) {
           await showDeviceDialog(
+            store,
             'warning',
             'No Device Selected',
             'Select a device to connect to before starting the debugger. The debugger runs over the ' +
@@ -1178,6 +1196,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
           deviceDefinitions.configuration.communicationPort ??
           boardTarget
         const offer = await showDeviceDialog(
+          store,
           'question',
           offerSimulatorStart ? 'Simulator Not Running' : 'Not Connected',
           offerSimulatorStart
@@ -1229,7 +1248,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
       // Debug compilation. Resolve alias-bound locations to concrete
       // addresses first (same pre-compile snapshot the build/upload paths
       // use) — the compiler only understands `%…` literals, not alias names.
-      const freshProjectData = useOpenPLCStore.getState().projectActions.getCompileReadyProjectData()
+      const freshProjectData = store.getState().projectActions.getCompileReadyProjectData()
       consoleActions.addLog({ level: 'info', message: 'Starting debug compilation...' })
       const debugCompileResult = await compiler.compileForDebug(
         { projectData: freshProjectData, boardTarget, projectPath },
@@ -1270,6 +1289,7 @@ export const DefaultWorkspaceActivityBar = ({ zoom }: DefaultWorkspaceActivityBa
     executeSave,
     addLog,
     currentBoardInfo,
+    store,
   ])
 
   // ---------------------------------------------------------------------------

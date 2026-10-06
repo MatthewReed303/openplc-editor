@@ -29,10 +29,13 @@ jest.mock('@root/frontend/store/slices/fbd/utils/build-graph', () => ({
   },
 }))
 
-import { openPLCStoreBase } from '@root/frontend/store'
+import { createTestStore } from '@root/frontend/store/testing'
 
 import { applyFbdBody } from '../apply/fbd'
 import type { SpecFbdBody } from '../apply/schema'
+
+// One store for the file, as the process singleton was.
+const store = createTestStore()
 
 const input = (name: string) => ({ name, class: 'input', type: { definition: 'base-type', value: 'INT' } })
 const output = (name: string) => ({ name, class: 'output', type: { definition: 'base-type', value: 'INT' } })
@@ -56,7 +59,7 @@ const LIB: SystemLibrary = {
 } as unknown as SystemLibrary
 
 beforeEach(() => {
-  openPLCStoreBase.getState().libraryActions.setSystemLibraries([LIB])
+  store.getState().libraryActions.setSystemLibraries([LIB])
 })
 
 const wire = (call: string, pin: string): SpecFbdBody =>
@@ -68,12 +71,12 @@ const wire = (call: string, pin: string): SpecFbdBody =>
     connections: [{ from: 'src', to: `blk.${pin}` }],
   }) as unknown as SpecFbdBody
 
-const errorsFor = (call: string, pin: string) => applyFbdBody('Main', wire(call, pin))
+const errorsFor = (call: string, pin: string) => applyFbdBody(store, 'Main', wire(call, pin))
 
 /** The input pins the block ended up with, as handed to the graph builder. */
 const grownPins = (call: string, pin: string): string[] => {
   handed.nodes = []
-  applyFbdBody('Main', wire(call, pin))
+  applyFbdBody(store, 'Main', wire(call, pin))
   const block = (handed.nodes as { kind: string; variant?: { variables?: { name: string; class?: string }[] } }[]).find(
     (node) => node.kind === 'block',
   )

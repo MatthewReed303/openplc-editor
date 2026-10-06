@@ -2,7 +2,7 @@ import { NodeResizer } from '@xyflow/react'
 import { memo, useCallback, useEffect, useState } from 'react'
 
 import { useIsDebuggerVisible } from '../../../../hooks/use-debug-value'
-import { useOpenPLCStore } from '../../../../store'
+import { useOpenPLCStore, useOpenPLCStoreApi } from '../../../../store'
 import { cn } from '../../../../utils/cn'
 import { executeStDocumentUri } from '../../../../utils/PLC/execute-st-uri'
 import { useBoundPou } from '../../../_features/[workspace]/editor/graphical/active-context'
@@ -26,6 +26,7 @@ export type { ExecuteNode } from './utils/types'
  * no rung to lay it out. An unwired `EN` means the snippet runs every scan.
  */
 const ExecuteElement = (block: ExecuteProps) => {
+  const store = useOpenPLCStoreApi()
   const { id, data, selected, width, height } = block
   const pouName = useBoundPou()
   const updateNode = useOpenPLCStore((state) => state.fbdFlowActions.updateNode)
@@ -49,7 +50,7 @@ const ExecuteElement = (block: ExecuteProps) => {
 
   const handleCommit = useCallback(
     (nextCode: string) => {
-      const { fbdFlows } = useOpenPLCStore.getState()
+      const { fbdFlows } = store.getState()
       const node = fbdFlows.find((flow) => flow.name === pouName)?.rung.nodes.find((n) => n.id === id)
       if (!node) return
       if ((node.data as { code?: string }).code === nextCode) return
@@ -60,7 +61,7 @@ const ExecuteElement = (block: ExecuteProps) => {
         node: { ...node, data: { ...node.data, code: nextCode } },
       })
     },
-    [id, pouName, updateNode],
+    [store, id, pouName, updateNode],
   )
 
   return (

@@ -9,13 +9,14 @@
 
 import { useMemo, useState } from 'react'
 
-import { useOpenPLCStore } from '../../../store'
+import { useOpenPLCStore, useOpenPLCStoreApi } from '../../../store'
 import { cn } from '../../../utils/cn'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../../_atoms/select'
 import { reconcilePlacedBlocks } from '../../_features/[workspace]/editor/library-manager/reconcile-placed-blocks'
 import { Modal, ModalContent, ModalTitle } from '../../_molecules/modal'
 
 const LibraryUpdatesModal = () => {
+  const store = useOpenPLCStoreApi()
   const isOpen = useOpenPLCStore((state) => state.modals['library-updates']?.open ?? false)
   const outdated = useOpenPLCStore((state) => state.outdatedLibraries)
   const setLibraryVersion = useOpenPLCStore((state) => state.libraryActions.setLibraryVersion)
@@ -34,7 +35,7 @@ const LibraryUpdatesModal = () => {
 
   const handleApply = () => {
     for (const library of pending) setLibraryVersion(library.name, selected(library.name))
-    if (pending.length > 0) reconcilePlacedBlocks()
+    if (pending.length > 0) reconcilePlacedBlocks(store)
     closeModal()
   }
 

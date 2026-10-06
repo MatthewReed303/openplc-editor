@@ -50,6 +50,8 @@ export interface AcceleratorPort {
    *  the same modal from its own File menu, which it always renders, so its
    *  adapter returns a no-op unsubscribe like the other accelerators. */
   onRetrieveProject(callback: () => void): Unsubscribe
+  /** Import PLCopen XML from the native macOS/Linux File menu; web renders its own File menu. */
+  onImportPlcopen(callback: () => void): Unsubscribe
   onCloseProject(callback: () => void): Unsubscribe
   /**
    * File → "Export to PLCOpen XML" / "Export to CODESYS XML".
@@ -59,12 +61,6 @@ export interface AcceleratorPort {
    * path can still implement a no-arg callback.
    */
   onExportProject(callback: (format?: 'old-editor' | 'codesys') => void): Unsubscribe
-  /**
-   * File → "Import PLCopen XML". The handler opens the confirm-overwrite modal
-   * rather than importing straight away, since an import replaces the open
-   * project's contents.
-   */
-  onImportProject(callback: () => void): Unsubscribe
   /** File > Print / Ctrl+P (Cmd+P). Preview is an alias into the same
    *  export-PDF wizard, not a separate accelerator. */
   onPrint(callback: () => void): Unsubscribe

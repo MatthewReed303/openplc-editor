@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react'
 
 import { useIsDebuggerVisible } from '../../../../hooks/use-debug-value'
-import { useOpenPLCStore } from '../../../../store'
+import { useOpenPLCStore, useOpenPLCStoreApi } from '../../../../store'
 import { cn } from '../../../../utils/cn'
 import { executeStDocumentUri } from '../../../../utils/PLC/execute-st-uri'
 import { useBoundPou } from '../../../_features/[workspace]/editor/graphical/active-context'
@@ -31,6 +31,7 @@ export type { ExecuteNode } from './utils/types'
  * whatever follows.
  */
 const Execute = (block: ExecuteProps) => {
+  const store = useOpenPLCStoreApi()
   const { id, data, selected, width, height } = block
   const pouName = useBoundPou()
   const updateNode = useOpenPLCStore((state) => state.ladderFlowActions.updateNode)
@@ -49,7 +50,7 @@ const Execute = (block: ExecuteProps) => {
   const handleLineCountChange = useCallback(
     (lineCount: number) => {
       const nextHeight = executeHeight(lineCount)
-      const { project, ladderFlows } = useOpenPLCStore.getState()
+      const { project, ladderFlows } = store.getState()
       const { rung, node } = getLadderPouVariablesRungNodeAndEdges(pouName, project.data.pous, ladderFlows, {
         nodeId: id,
       })
@@ -67,14 +68,14 @@ const Execute = (block: ExecuteProps) => {
         transient: true,
       })
     },
-    [id, pouName, updateNode],
+    [store, id, pouName, updateNode],
   )
 
   const handleCommit = useCallback(
     (nextCode: string) => {
       // Re-read from the store: the rung id isn't on the node, and it may have
       // been re-laid-out since this callback was made.
-      const { project, ladderFlows } = useOpenPLCStore.getState()
+      const { project, ladderFlows } = store.getState()
       const { rung, node } = getLadderPouVariablesRungNodeAndEdges(pouName, project.data.pous, ladderFlows, {
         nodeId: id,
       })
@@ -94,7 +95,7 @@ const Execute = (block: ExecuteProps) => {
         },
       })
     },
-    [id, pouName, updateNode],
+    [store, id, pouName, updateNode],
   )
 
   return (

@@ -20,7 +20,7 @@
  */
 
 import type { PLCPou } from '../../../middleware/shared/ports/types'
-import { openPLCStoreBase } from '../../store'
+import type { OpenPLCStore } from '../../store'
 import { executeStDocumentUri, executeStScopeId, parseExecuteStDocumentUri } from '../../utils/PLC/execute-st-uri'
 import { serializePouScopeForBody } from '../../utils/PLC/pou-signature-serializer'
 import { deleteBodyLineOffset, setBodyLineOffset } from '../lsp-shared/body-offsets'
@@ -108,18 +108,18 @@ export function collectExecuteDocs(state: {
   return out
 }
 
-export function attachExecuteSync(service: StLspService): ExecuteSyncHandle {
+export function attachExecuteSync(store: OpenPLCStore, service: StLspService): ExecuteSyncHandle {
   const snapshot: Snapshot = { contentByUri: new Map() }
   let disposed = false
   let timer: ReturnType<typeof setTimeout> | null = null
 
   // As `project-sync`: `AT <alias>` is not legal IEC, so the LSP must see
   // resolved literal addresses or the whole VAR block is lost.
-  const aliasIndex = (): ReadonlyMap<string, string> => openPLCStoreBase.getState().projectActions.getAliasIndex()
+  const aliasIndex = (): ReadonlyMap<string, string> => store.getState().projectActions.getAliasIndex()
 
   function reconcile(): void {
     if (disposed) return
-    const state = openPLCStoreBase.getState()
+    const state = store.getState()
     const docs = collectExecuteDocs(state)
     const seen = new Set<string>()
 
@@ -165,7 +165,7 @@ export function attachExecuteSync(service: StLspService): ExecuteSyncHandle {
     syncDraft(uri, code, force = false) {
       const parsed = parseExecuteStDocumentUri(uri)
       if (parsed === null) return
-      const pou = openPLCStoreBase.getState().project.data.pous.find((p) => p.name === parsed.pouName)
+      const pou = store.getState().project.data.pous.find((p) => p.name === parsed.pouName)
       if (!pou) return
       publish(uri, pou, parsed.nodeId, code, force)
     },
@@ -184,10 +184,10 @@ export function attachExecuteSync(service: StLspService): ExecuteSyncHandle {
   // on every store write, including each debug poll tick. Three triggers: the
   // flows carry the snippet text, the POU list carries the declarations the
   // shell embeds, and the alias index changes on a pure re-address.
-  const unsubscribeLadder = openPLCStoreBase.subscribe((state) => state.ladderFlows, schedule)
-  const unsubscribeFbd = openPLCStoreBase.subscribe((state) => state.fbdFlows, schedule)
-  const unsubscribePous = openPLCStoreBase.subscribe((state) => state.project.data.pous, schedule)
-  const unsubscribeAliases = openPLCStoreBase.subscribe((state) => state.projectActions.getAliasIndex(), schedule)
+  const unsubscribeLadder = store.subscribe((state) => state.ladderFlows, schedule)
+  const unsubscribeFbd = store.subscribe((state) => state.fbdFlows, schedule)
+  const unsubscribePous = store.subscribe((state) => state.project.data.pous, schedule)
+  const unsubscribeAliases = store.subscribe((state) => state.projectActions.getAliasIndex(), schedule)
   const unsubscribe = () => {
     unsubscribeAliases()
     unsubscribePous()
