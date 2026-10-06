@@ -204,6 +204,9 @@ export interface BoardBuildInfo {
    * builtins never carry this field.
    */
   platformOptions?: PlatformOption[]
+  /** Absolute path of the board's own partition table (.csv), copied into
+   *  the sketch as `partitions.csv`. From VPP `target.partitions`. */
+  partitionsFile?: string
 
   // runtime-v4 targets -----------------------------------------------------
   pluginType?: 'python' | 'native'
@@ -338,6 +341,7 @@ export class BoardInfoResolver {
 
     const resolveRel = this.config.resolvePackageRelativePath
     if (device.hal.source) info.halSourceFile = resolveRel(pkg.path, device.hal.source)
+    if (device.target.partitions) info.partitionsFile = resolveRel(pkg.path, device.target.partitions)
     if (device.hal.pluginEntry) info.pluginEntry = resolveRel(pkg.path, device.hal.pluginEntry)
     if (device.hal.configTemplate) info.configTemplate = resolveRel(pkg.path, device.hal.configTemplate)
     if (device.hal.requirements) info.requirements = resolveRel(pkg.path, device.hal.requirements)

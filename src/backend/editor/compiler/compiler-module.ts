@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import crypto, { createHash } from 'node:crypto'
 import { existsSync, promises as fs } from 'node:fs'
-import { cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import type { IncomingMessage } from 'node:http'
 import https from 'node:https'
 import os from 'node:os'
@@ -1674,6 +1674,16 @@ class CompilerModule {
     const info = resolver.resolve(boardTarget)
     if (!info.platform) {
       throw new Error(`Board "${boardTarget}" does not declare a platform (FQBN)`)
+    }
+
+    // A board's own partition table: the ESP32 core takes `partitions.csv`
+    // from the sketch folder over the FQBN's PartitionScheme. Removed when the
+    // board declares none, so a table never outlives a target switch.
+    const sketchPartitions = join(baremetalPath, 'partitions.csv')
+    if (info.partitionsFile) {
+      await cp(info.partitionsFile, sketchPartitions)
+    } else {
+      await rm(sketchPartitions, { force: true })
     }
 
     // Compose effective FQBN by appending platformOptions selected by the user

@@ -21,4 +21,9 @@ export const TRUSTED_PACKAGE_KEYS: Record<string, string> = {
 MCowBQYDK2VwAyEABdweEuJAfYG923RkmZLYsmonLvCcgVtgpJ7mngbRJQk=
 -----END PUBLIC KEY-----
 `,
+  // ModBee boards (com.modbee.*), signed by MR Electrical & Automation.
+  'modbee-2026': `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAFDSiJsYK2C8LD/tB0c6R/N60rckWiIJeX3dUr0jpJiA=
+-----END PUBLIC KEY-----
+`,
 }

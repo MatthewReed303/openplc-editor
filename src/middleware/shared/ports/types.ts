@@ -727,6 +727,12 @@ export interface PackageManifest {
        * only the Siemens LOGO! 8.2 uses "ethernet". See manifest.schema.json.
        */
       uploadMethod?: 'serial' | 'ethernet'
+      /**
+       * Package-relative partition table (.csv) for arduino-cli ESP32 targets.
+       * Copied into the sketch as `partitions.csv`, which the ESP32 core uses
+       * in place of the FQBN's PartitionScheme.
+       */
+      partitions?: string
     }
     specs?: Record<string, string>
     hal: {
