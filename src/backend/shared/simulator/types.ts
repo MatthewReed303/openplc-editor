@@ -45,6 +45,10 @@ export enum ModbusDebugResponse {
    *  what keeps an older editor build, or an OPC-UA client, from writing
    *  through to it. */
   READ_ONLY = 0x87,
+  /** PLC_SET_STATE only: a cold restart (request 0x03) was refused because the
+   *  PLC is running. Discarding retained values must follow a deliberate stop,
+   *  as on the OpenPLC Linux runtime. */
+  REFUSED_RUNNING = 0x88,
 }
 
 /** Runtime states reported by DEBUG_GET_STATUS and PLC_SET_STATE (and by

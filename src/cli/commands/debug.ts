@@ -176,6 +176,7 @@ export async function runDebug(args: ParsedArgs, reporter: Reporter, context: De
     case 'unforce':
     case 'start':
     case 'stop':
+    case 'cold-restart':
     case 'watch':
     case 'poll':
     case 'unwatch':
@@ -186,7 +187,7 @@ export async function runDebug(args: ParsedArgs, reporter: Reporter, context: De
         {
           code: ErrorCode.MissingArgument,
           message:
-            'Name a debug subcommand: open, list, close, status, list-vars, read, force, unforce, start, stop, watch, poll, unwatch, stats, repl',
+            'Name a debug subcommand: open, list, close, status, list-vars, read, force, unforce, start, stop, cold-restart, watch, poll, unwatch, stats, repl',
         },
         ExitCode.Usage,
       )
@@ -519,6 +520,7 @@ export function buildRequest(
     }
     case 'start':
     case 'stop':
+    case 'cold-restart':
       return { request: { id, kind } }
     case 'watch': {
       if (names.length === 0) return { error: 'watch needs at least one variable name' }
@@ -690,7 +692,8 @@ const REPL_HELP = `Commands
   poll                       show what has been recorded since the last poll
   unwatch [name...]          stop recording (all, or the named ones)
   stats [reset]              each task's timing (a board in RTOS mode); reset starts a new window
-  start | stop               run/stop the PLC
+  start | stop               run/stop the PLC (start is a warm restart: RETAIN values kept)
+  cold-restart               every variable, RETAIN included, to its initial value; then run
   status                     connection, program md5, plc state, forced list
   help                       this list
   quit | exit                leave the REPL (the session stays open)`
@@ -740,6 +743,8 @@ export function parseReplLine(
       return { request: { id, kind: 'start' } }
     case 'stop':
       return { request: { id, kind: 'stop' } }
+    case 'cold-restart':
+      return { request: { id, kind: 'cold-restart' } }
     case 'status':
       return { request: { id, kind: 'status' } }
     default:

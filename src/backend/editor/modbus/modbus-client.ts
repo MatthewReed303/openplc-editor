@@ -11,6 +11,7 @@ import {
   parsePlcSetStateResponse,
   parseReadLicenseResponse,
   parseWriteLicenseResponse,
+  type PlcSetStateRequest,
   readTaskStats,
 } from '@root/backend/shared/debug/modbus-pdu'
 import type {
@@ -23,7 +24,6 @@ import type {
   Md5ProbeResult,
   PlcControlResult,
 } from '@root/backend/shared/debug/types'
-import { PlcRuntimeState } from '@root/backend/shared/simulator/types'
 import { detectTargetEndian } from '@root/frontend/utils/endian'
 import { getErrorMessage } from '@root/frontend/utils/get-error-message'
 import { Socket } from 'net'
@@ -514,7 +514,7 @@ export class ModbusTcpClient implements DeviceModbusTransport {
    * FC 0x4b -- ask the runtime to run or stop. Command only; reads go through
    * `getStatus()`. Refused while the mode switch reads STOP.
    */
-  async setPlcState(state: PlcRuntimeState.RUNNING | PlcRuntimeState.STOPPED): Promise<PlcControlResult> {
+  async setPlcState(state: PlcSetStateRequest): Promise<PlcControlResult> {
     if (!this.socket) return { success: false, error: 'Not connected to target' }
     try {
       const { request, transactionId } = this.buildTcpFrame(buildPlcSetStateRequest(state))

@@ -33,6 +33,9 @@ import type { Request, Response, SessionStatus, VariableValue, WatchSample } fro
 export interface PlcControl {
   start(): Promise<{ success: boolean; error?: string }>
   stop(): Promise<{ success: boolean; error?: string }>
+  /** Cold restart (IEC 61131-3 Figure 9 rule 4): every variable, RETAIN
+   *  included, to its initial value, the stored retained values replaced, RUN. */
+  coldRestart(): Promise<{ success: boolean; error?: string }>
   /** Current run state, or 'unknown' when the target cannot be asked. */
   state(): Promise<'running' | 'stopped' | 'unknown'>
 }
@@ -190,6 +193,16 @@ export class SessionCore {
 
       case 'unforce':
         return this.applyUnforce(request.id, request.name)
+
+      case 'cold-restart': {
+        const result = await this.options.plc.coldRestart()
+        if (!result.success) {
+          return this.fail(request.id, ErrorCode.TargetError, result.error ?? 'Could not cold-restart the PLC')
+        }
+        // Every variable was re-initialised, forces included.
+        this.forced.clear()
+        return { id: request.id, ok: true, data: { kind: 'plc-state', plcState: 'running' } }
+      }
 
       case 'start':
       case 'stop': {
@@ -627,6 +640,7 @@ export function restPlcControl(client: RuntimeApiClient, address: string): PlcCo
   return {
     start: async () => describe(await client.setPlcState(address, 'run'), 'started'),
     stop: async () => describe(await client.setPlcState(address, 'stop'), 'stopped'),
+    coldRestart: async () => describe(await client.coldRestart(address), 'cold-restarted'),
     async state() {
       const result = await client.getStatus(address)
       if (!result.success || !result.status) return 'unknown'
@@ -650,6 +664,46 @@ export function channelPlcControl(channel: DeviceDebugChannel): PlcControl {
       if (!channel.setPlcState) return { success: false, error: 'This target does not support run/stop control' }
       const result = await channel.setPlcState(PlcRuntimeState.STOPPED)
       return result.success ? { success: true } : { success: false, error: result.error }
+    },
+    async coldRestart() {
+      if (!channel.setPlcState) return { success: false, error: 'This target does not support run/stop control' }
+      const pause = () => new Promise((resolve) => setTimeout(resolve, 100))
+      // The board accepts a cold restart from STOP only, as the Linux runtime
+      // does: discarding retained values follows a deliberate stop. So stop,
+      // and wait for the stop to take effect (it is applied at the next cycle).
+      const stopped = await channel.setPlcState(PlcRuntimeState.STOPPED)
+      if (!stopped.success) return { success: false, error: stopped.error ?? 'The PLC could not be stopped' }
+      if (channel.getStatus) {
+        for (let attempt = 0; attempt < 20; attempt++) {
+          const status = await channel.getStatus()
+          if (status.success && status.plcState === Number(PlcRuntimeState.STOPPED)) break
+          await pause()
+        }
+      }
+      const result = await channel.setPlcState('cold-restart')
+      if (!result.success) {
+        if (result.refusedBySwitch) {
+          return { success: false, error: 'The PLC cannot be cold-restarted: its physical mode switch is in STOP.' }
+        }
+        return { success: false, error: result.error }
+      }
+      // A firmware older than the cold restart reads the request as STOP, so the
+      // PLC stays stopped. The restart is carried out at the next cycle: running
+      // soon after means it was done.
+      if (!channel.getStatus) return { success: true }
+      for (let attempt = 0; attempt < 10; attempt++) {
+        await pause()
+        const status = await channel.getStatus()
+        if (!status.success || status.plcState === undefined) continue
+        if (status.plcState === Number(PlcRuntimeState.RUNNING)) return { success: true }
+      }
+      return {
+        success: false,
+        error:
+          'The PLC stayed stopped: its firmware predates the cold restart and read the request as a stop, ' +
+          'so the retained values were not reset. Upload a build from this editor to get the cold restart, ' +
+          "or run 'start' to resume with the retained values.",
+      }
     },
     async state() {
       if (!channel.getStatus) return 'unknown'

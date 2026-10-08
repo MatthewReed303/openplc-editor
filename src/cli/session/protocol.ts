@@ -47,6 +47,7 @@ export const RequestKindSchema = z.enum([
   'unforce',
   'start',
   'stop',
+  'cold-restart',
   'watch',
   'poll',
   'unwatch',
@@ -91,6 +92,12 @@ export const RequestSchema = z.discriminatedUnion('kind', [
   z.object({ id: idField, kind: z.literal('unforce'), name: z.string() }),
   z.object({ id: idField, kind: z.literal('start') }),
   z.object({ id: idField, kind: z.literal('stop') }),
+  /**
+   * Cold restart, IEC 61131-3 Figure 9 rule 4: every variable, RETAIN
+   * included, back to its initial value and the stored retained values
+   * replaced by them, then RUN. A plain `start` is a warm restart.
+   */
+  z.object({ id: idField, kind: z.literal('cold-restart') }),
   /**
    * Begin recording variables into a bounded server-side buffer.
    *

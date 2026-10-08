@@ -23,6 +23,7 @@ const variable: ResolvedVariable = { name: 'main:flag', index: 0, arr: 0, elem: 
 const plc: PlcControl = {
   start: () => Promise.resolve({ success: true }),
   stop: () => Promise.resolve({ success: true }),
+  coldRestart: () => Promise.resolve({ success: true }),
   state: () => Promise.resolve('running' as const),
 }
 

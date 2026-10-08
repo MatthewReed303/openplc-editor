@@ -10,6 +10,7 @@ openplc-cli debug read --session <id>
 openplc-cli debug force <variable> <value>
 openplc-cli debug unforce <variable>
 openplc-cli debug start | stop
+openplc-cli debug cold-restart
 openplc-cli debug watch | poll | unwatch
 openplc-cli debug stats [--reset]
 openplc-cli debug close --session <id> | --all
@@ -25,6 +26,17 @@ into the EDITOR's chart and is not needed here.
 Paths use a colon between the POU and the variable: `PlantLogic:levelPct`, and
 `Config0:gPump` for a resource global. Members and array elements use dots and
 brackets from there — `AnalogChain:counter.Cfg.Trend[0]`.
+
+## Warm start and cold restart
+
+`start` is a warm restart: RETAIN variables keep the values they had when the
+PLC stopped, the rest start from their initial values (IEC 61131-3 6.5.6.1).
+`cold-restart` sets every variable, RETAIN included, to its initial value and
+replaces the stored retained values with them, then runs (Figure 9 rule 4).
+Runtimes and boards accept it from STOP only, so the command stops the PLC
+first. A board whose firmware predates the cold restart just stays stopped,
+and the command says so: upload a build from this editor, or `start` to resume
+with the retained values.
 
 ## A board in RTOS mode
 

@@ -6,6 +6,7 @@ import {
   parsePlcSetStateResponse,
   parseReadLicenseResponse,
   parseWriteLicenseResponse,
+  type PlcSetStateRequest,
 } from '@root/backend/shared/debug/modbus-pdu'
 import type {
   DebugLicenseReadResult,
@@ -16,7 +17,7 @@ import type {
 } from '@root/backend/shared/debug/types'
 import { detectTargetEndian } from '@root/frontend/utils/endian'
 
-import { ModbusDebugResponse, ModbusFunctionCode, PlcRuntimeState } from './types'
+import { ModbusDebugResponse, ModbusFunctionCode } from './types'
 
 export interface SerialPortLike {
   isOpen: boolean
@@ -608,7 +609,7 @@ export class ModbusRtuClient {
    * reports it. A RUN request is refused (not queued) while the mode switch
    * reads STOP; `refusedBySwitch` says so.
    */
-  async setPlcState(state: PlcRuntimeState.RUNNING | PlcRuntimeState.STOPPED): Promise<PlcControlResult> {
+  async setPlcState(state: PlcSetStateRequest): Promise<PlcControlResult> {
     try {
       // buildPlcSetStateRequest returns [FC][state]; assembleRequest writes the
       // FC + slaveId itself, so hand it only the trailing payload.

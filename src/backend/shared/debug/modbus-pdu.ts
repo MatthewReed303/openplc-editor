@@ -138,6 +138,9 @@ function statusError(code: number): string {
   if (code === ModbusDebugResponse.READ_ONLY) {
     return 'This variable is declared CONSTANT and cannot be written or forced'
   }
+  if (code === ModbusDebugResponse.REFUSED_RUNNING) {
+    return 'Refused: the PLC is running. A cold restart discards the retained values, so stop the PLC first'
+  }
   return `Unknown error code: 0x${code.toString(16)}`
 }
 
@@ -604,10 +607,24 @@ export function responseFunctionCode(data: Uint8Array): number | undefined {
 // `parseGetStatusResponse` (FC 0x46) above, which already reports it.
 // ---------------------------------------------------------------------------
 
-export function buildPlcSetStateRequest(state: PlcRuntimeState.RUNNING | PlcRuntimeState.STOPPED): Uint8Array {
+/**
+ * What FC 0x4b can ask for: run, stop, or a COLD restart — IEC 61131-3 Figure 9
+ * rule 4 (p.57), every variable, RETAIN included, back to its initial value and
+ * the stored retained values replaced by them, then RUN. On the wire the cold
+ * restart is request byte 0x03 (0x02 is PLC_STATE_ERROR in the replies). It is
+ * accepted from STOP only (status 0x88 while running). A firmware older than the
+ * cold restart reads 0x03 as STOP and stays stopped; the caller checks the state
+ * afterwards to tell the two apart.
+ */
+export type PlcSetStateRequest = PlcRuntimeState.RUNNING | PlcRuntimeState.STOPPED | 'cold-restart'
+
+/** FC 0x4b request byte for a cold restart. */
+export const PLC_REQUEST_COLD_RESTART = 0x03
+
+export function buildPlcSetStateRequest(state: PlcSetStateRequest): Uint8Array {
   const pdu = alloc(2)
   writeU8(pdu, 0, ModbusFunctionCode.PLC_SET_STATE)
-  writeU8(pdu, 1, state === PlcRuntimeState.RUNNING ? 1 : 0)
+  writeU8(pdu, 1, state === 'cold-restart' ? PLC_REQUEST_COLD_RESTART : state === PlcRuntimeState.RUNNING ? 1 : 0)
   return pdu
 }
 

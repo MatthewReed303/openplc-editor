@@ -1,5 +1,5 @@
 import type { RtosStatsResult } from '../../../middleware/shared/ports/types'
-import type { PlcRuntimeState } from '../simulator/types'
+import type { PlcSetStateRequest } from './modbus-pdu'
 
 /**
  * Debug Transport Interface
@@ -227,7 +227,7 @@ export interface DeviceChannelTransport {
   getStatus?(): Promise<DebugStatusResult>
   /** Run/stop command (FC 0x4b). Reads go through `getStatus()`. Optional for
    *  the same reason as `getStatus`. */
-  setPlcState?(state: PlcRuntimeState.RUNNING | PlcRuntimeState.STOPPED): Promise<PlcControlResult>
+  setPlcState?(state: PlcSetStateRequest): Promise<PlcControlResult>
   /** Per-task timing of a board in RTOS mode (FC 0x4e); `resetWindow` starts a
    *  new window after this read. Baremetal only, as run/stop is. */
   getTaskStats?(resetWindow?: boolean): Promise<DebugTaskStatsResult>
@@ -321,7 +321,7 @@ export interface DeviceModbusTransport
    *  then hash a second time. */
   getAnchor?: never
   getStatus(): Promise<DebugStatusResult>
-  setPlcState(state: PlcRuntimeState.RUNNING | PlcRuntimeState.STOPPED): Promise<PlcControlResult>
+  setPlcState(state: PlcSetStateRequest): Promise<PlcControlResult>
   readLicense(): Promise<DebugLicenseReadResult>
   writeLicense(blob: Uint8Array): Promise<DebugLicenseWriteResult>
   /**

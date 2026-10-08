@@ -14,6 +14,7 @@ import {
   parsePlcSetStateResponse,
   parseReadLicenseResponse,
   parseWriteLicenseResponse,
+  type PlcSetStateRequest,
   readTaskStats,
   taskStatsPduLength,
 } from '@root/backend/shared/debug/modbus-pdu'
@@ -27,7 +28,6 @@ import type {
   Md5ProbeResult,
   PlcControlResult,
 } from '@root/backend/shared/debug/types'
-import { PlcRuntimeState } from '@root/backend/shared/simulator/types'
 import { detectTargetEndian } from '@root/frontend/utils/endian'
 import { getErrorMessage } from '@root/frontend/utils/get-error-message'
 import { SerialPort } from 'serialport'
@@ -794,7 +794,7 @@ export class ModbusRtuClient implements DeviceModbusTransport {
    * queued) while the mode switch reads STOP, and the result says so via
    * `refusedBySwitch` so the caller can tell the user to flip the switch.
    */
-  async setPlcState(state: PlcRuntimeState.RUNNING | PlcRuntimeState.STOPPED): Promise<PlcControlResult> {
+  async setPlcState(state: PlcSetStateRequest): Promise<PlcControlResult> {
     try {
       const pdu = buildPlcSetStateRequest(state)
       const request = this.assembleRequest(ModbusFunctionCode.PLC_SET_STATE, Buffer.from(pdu.subarray(1)))

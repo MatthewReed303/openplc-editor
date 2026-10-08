@@ -78,6 +78,7 @@ function makeIndex(): DebugVariableIndex {
 const plc: PlcControl = {
   start: () => Promise.resolve({ success: true }),
   stop: () => Promise.resolve({ success: true }),
+  coldRestart: () => Promise.resolve({ success: true }),
   state: () => Promise.resolve('running' as const),
 }
 

@@ -131,7 +131,7 @@ Usage
   openplc-cli upload  <project> (--host <address> | --port <serial>) [--target <board>] [--clean] [-y|--yes] [--create-user]
   openplc-cli debug open <project> --target <board> (--host <address> | --port <serial>) [--upload-if-needed]
   openplc-cli debug list
-  openplc-cli debug status | list-vars | read | force | unforce | start | stop | watch | poll | unwatch
+  openplc-cli debug status | list-vars | read | force | unforce | start | stop | cold-restart | watch | poll | unwatch
   openplc-cli debug stats [--reset]                          (each task's timing, a board in RTOS mode)
   openplc-cli debug close --session <id> | --all [--keep-forces]
   openplc-cli debug repl [--session <id>]                       (interactive; needs a terminal)

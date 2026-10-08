@@ -801,4 +801,37 @@ export class RuntimeApiClient {
     // the command asked for so a caller can reflect it without a second round trip.
     return { success: true, state: action === 'run' ? PlcRuntimeState.RUNNING : PlcRuntimeState.STOPPED }
   }
+
+  /**
+   * Cold restart, IEC 61131-3 Figure 9 rule 4 (p.57): every variable, RETAIN
+   * included, back to its initial value, the stored retained values replaced by
+   * them, then RUN. The runtime refuses `cold-start-plc` while RUNNING (throwing
+   * retained values away must follow a deliberate stop), so this stops first.
+   * A runtime that predates the route answers 404, reported as unsupported.
+   */
+  async coldRestart(address: string): Promise<PlcControlResult> {
+    // The runtime answers COMMAND:BUSY while a transition (an upload's program
+    // load, the stop just asked for) is still in progress: retry, as the
+    // post-build start does, for up to five seconds.
+    const untilNotBusy = async (path: string) => {
+      const deadline = Date.now() + 5000
+      for (;;) {
+        const reply = await this.statusCommand(address, path)
+        if (!reply.success || !(reply.status ?? '').includes('COMMAND:BUSY') || Date.now() > deadline) return reply
+        await new Promise((resolve) => setTimeout(resolve, 150))
+      }
+    }
+    const stopped = await untilNotBusy('/api/stop-plc')
+    if (!stopped.success) return { success: false, error: stopped.error }
+    const result = await untilNotBusy('/api/cold-start-plc')
+    if (!result.success) {
+      return { success: false, error: result.error ?? 'This runtime does not support a cold restart' }
+    }
+    const status = result.status ?? ''
+    if (status.includes('ERROR_SWITCH_STOP')) return { success: false, refusedBySwitch: true }
+    if (!status.includes('COLD_START:OK')) {
+      return { success: false, error: `The runtime refused the cold restart (${status || 'no reply'})` }
+    }
+    return { success: true, state: PlcRuntimeState.RUNNING }
+  }
 }
