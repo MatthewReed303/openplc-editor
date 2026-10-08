@@ -8,7 +8,11 @@
  */
 
 import { isLegalIdentifier } from '../../../frontend/utils/keywords'
-import { clampIOGroupLength, MAX_IO_GROUP_LENGTH_BY_FC } from '../../../frontend/utils/modbus/io-group'
+import {
+  clampIOGroupLength,
+  isReadFunctionCode,
+  MAX_IO_GROUP_LENGTH_BY_FC,
+} from '../../../frontend/utils/modbus/io-group'
 import { DEFAULT_MODBUS_TCP_DEVICE_CONFIG } from '../../../frontend/utils/protocol/server-defaults'
 import type { ModbusIOGroup, PLCRemoteDevice } from '../types/PLC/open-plc'
 import { PLCRemoteDeviceSchema } from '../types/PLC/open-plc'
@@ -158,6 +162,16 @@ function normalizeIOGroups(deviceName: string, groups: SpecIOGroup[], errors: st
       errors.push(
         `${where}: I/O group "${group.name}" asks for ${group.length} elements; ` +
           `FC ${group.functionCode} addresses at most ${max} per request.`,
+      )
+      continue
+    }
+    // The store keeps a write group's error handling at keep-last-value (it has
+    // no input image to apply it to), so accepting another value here would
+    // report a setting that is never stored.
+    if (!isReadFunctionCode(group.functionCode) && (group.errorHandling ?? 'keep-last-value') !== 'keep-last-value') {
+      errors.push(
+        `${where}: I/O group "${group.name}" is a write group (FC ${group.functionCode}); ` +
+          `errorHandling "${group.errorHandling}" only applies to read groups (FC 1-4). Omit it or use "keep-last-value".`,
       )
       continue
     }

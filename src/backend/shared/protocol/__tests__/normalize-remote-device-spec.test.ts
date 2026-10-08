@@ -98,6 +98,40 @@ describe('a Modbus TCP remote device', () => {
   })
 })
 
+describe('error handling on an I/O group', () => {
+  const device = (functionCode: string, errorHandling?: 'keep-last-value' | 'set-to-zero'): SpecRemoteDevice => ({
+    name: 'FieldIO',
+    protocol: 'modbus-tcp',
+    modbus: {
+      ioGroups: [
+        {
+          name: 'Group',
+          functionCode: functionCode as '1',
+          cycleTime: 100,
+          offset: '0x0000',
+          length: 1,
+          ...(errorHandling ? { errorHandling } : {}),
+        },
+      ],
+    },
+  })
+
+  // The store keeps a write group at keep-last-value, so set-to-zero would be
+  // reported as applied and never stored.
+  it.each(['5', '6', '15', '16'])('refuses set-to-zero on write group FC %s', (fc) => {
+    expect(errorsOf(device(fc, 'set-to-zero')).join(' ')).toContain('only applies to read groups')
+  })
+
+  it.each(['5', '6', '15', '16'])('accepts write group FC %s with keep-last-value or nothing', (fc) => {
+    expect(ok(device(fc, 'keep-last-value')).ioGroups[0].errorHandling).toBe('keep-last-value')
+    expect(ok(device(fc)).ioGroups[0].errorHandling).toBe('keep-last-value')
+  })
+
+  it.each(['1', '2', '3', '4'])('keeps set-to-zero on read group FC %s', (fc) => {
+    expect(ok(device(fc, 'set-to-zero')).ioGroups[0].errorHandling).toBe('set-to-zero')
+  })
+})
+
 describe('a Modbus RTU remote device', () => {
   it('builds when it has a serial port', () => {
     const { device } = ok({
