@@ -91,6 +91,12 @@ uint8_t runtime_rtos_wanted_state(void);
 uint8_t runtime_rtos_state(void);
 void    runtime_rtos_enter_stop(void);
 void    runtime_rtos_enter_run(uint64_t run_tick);
+// A cold restart is waiting (runtime_request_cold_restart, from STOP only); the
+// dispatcher does it at the STOP -> RUN edge in place of enter_run, or cancels
+// it when the switch keeps the PLC stopped.
+bool    runtime_rtos_cold_restart_pending(void);
+void    runtime_rtos_cold_restart_cancel(void);
+void    runtime_rtos_cold_restart(uint64_t run_tick);
 void    runtime_rtos_stopped_copy_in(void);
 // False when skipped this time: a task was mid-scan (not stalled), or a service
 // held one. A task stalled in a block is read as it stands, so it cannot keep
@@ -150,6 +156,17 @@ void runtime_retain_load();
 // per-scan write. See Baremetal/openplc_retain.h.
 void runtime_retain_flush();
 
+// Pack the retained values now and commit them through the store (write +
+// flush), before returning. For a block about to restart the board or put it
+// into deep sleep, which no STOP and no power-cut path will flush. Safe to call
+// from a function block during a scan, in the loop and the RTOS builds. Blocks
+// for the store's commit (an ESP32 NVS write: tens of ms). Returns 0
+// (OPLC_RETAIN_OK) when committed, else an openplc_retain_status_t; 2
+// (UNSUPPORTED) when nothing is retained or the board stores nothing. A library
+// calling it should declare it weak and check for NULL, so it still links
+// against firmware older than this.
+uint8_t runtime_retain_flush_now(void);
+
 // ---------------------------------------------------------------------------
 // Run/stop control surface.
 //
@@ -176,6 +193,16 @@ void runtime_retain_flush();
 #define PLC_CTRL_OK                   0
 #define PLC_CTRL_REFUSED_SWITCH_STOP  1
 #define PLC_CTRL_INVALID              2
+// A cold restart was asked for while the PLC runs: stop it first.
+#define PLC_CTRL_REFUSED_RUNNING      3
+
+// Ask for a COLD restart (IEC 61131-3 Figure 9 rule 4): every RETAIN and
+// NON_RETAIN variable back to its initial value, the stored retained values
+// replaced by those initial values, then RUN. From STOP only: refused while
+// RUNNING (PLC_CTRL_REFUSED_RUNNING), so discarding retained values always
+// follows a deliberate stop, and refused while the mode switch reads STOP,
+// like a run request. Carried out at the next cycle. PLC_CTRL_*.
+uint8_t runtime_request_cold_restart(void);
 
 // Last value read from hardwareStateSwitch() (PLC_SWITCH_*).
 uint8_t runtime_get_switch_position(void);

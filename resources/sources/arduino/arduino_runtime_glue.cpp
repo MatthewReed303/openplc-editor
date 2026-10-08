@@ -27,6 +27,7 @@
 #if OPENPLC_RTOS
 #include "plc_os.h"
 #include <string.h>
+#include <stdlib.h>
 
 #ifndef OPENPLC_RTOS_COMMS_WAIT_US
 // How long a service waits for a task's scan before answering "busy".
@@ -122,6 +123,8 @@ static uint8_t plc_state      = PLC_STATE_RUNNING;
 static uint8_t switch_position = PLC_SWITCH_RUN;
 static uint8_t last_switch     = PLC_SWITCH_RUN;
 static bool    software_stop   = false;
+// A cold restart was asked for (runtime_request_cold_restart) and not yet done.
+static bool    cold_restart_pending = false;
 
 // Weak default: boards with no physical mode switch always read RUN, so the
 // gate collapses to "software request only" and the boot state is RUNNING --
@@ -192,6 +195,43 @@ extern "C" uint8_t runtime_request_plc_state(uint8_t desired_state)
     }
     return PLC_CTRL_INVALID;
 #endif
+}
+
+static void runtime_reinit_program(bool restore = true);
+static void runtime_retain_store_initial_values();
+
+// A cold restart: IEC 61131-3 Figure 9 rule 4 (p.57) — every RETAIN and
+// NON_RETAIN variable takes its initial value, the stored retained values are
+// replaced by those initial values, and the PLC runs.
+//
+// From STOP only, as on the OpenPLC Linux runtime: refused while RUNNING, so
+// throwing a plant's retained values away always follows a deliberate stop.
+// Refused too, like a RUN request, while the mode switch reads STOP: it ends in
+// RUN, and the switch is authoritative. Carried out by the scan loop (or the
+// RTOS dispatcher) at its next cycle.
+extern "C" uint8_t runtime_request_cold_restart(void)
+{
+#if OPENPLC_RTOS
+    if (__atomic_load_n(&plc_state, __ATOMIC_ACQUIRE) != PLC_STATE_STOPPED)
+        return PLC_CTRL_REFUSED_RUNNING;
+    if (__atomic_load_n(&switch_position, __ATOMIC_ACQUIRE) == PLC_SWITCH_STOP)
+        return PLC_CTRL_REFUSED_SWITCH_STOP;
+    __atomic_store_n(&cold_restart_pending, true, __ATOMIC_RELEASE);
+    __atomic_store_n(&software_stop, false, __ATOMIC_RELEASE);
+#else
+    if (plc_state != PLC_STATE_STOPPED) return PLC_CTRL_REFUSED_RUNNING;
+    if (hardwareStateSwitch() == PLC_SWITCH_STOP) return PLC_CTRL_REFUSED_SWITCH_STOP;
+    cold_restart_pending = true;
+    software_stop = false;
+#endif
+    return PLC_CTRL_OK;
+}
+
+// Re-initialise without a restore, then make the store hold the initial values.
+static void runtime_cold_restart()
+{
+    runtime_reinit_program(false);
+    runtime_retain_store_initial_values();
 }
 
 // ---------------------------------------------------------------------------
@@ -450,7 +490,7 @@ static void runtime_zero_output_image()
 // DELETE before stopping or it leaks across restarts — nothing frees those
 // allocations automatically, at re-init or otherwise.
 // ---------------------------------------------------------------------------
-static void runtime_reinit_program()
+static void runtime_reinit_program(bool restore)
 {
     // Destroy then re-construct in place. The destructor call matters:
     // Configuration_CONFIG0 derives from strucpp::ConfigurationInstance, which
@@ -467,8 +507,9 @@ static void runtime_reinit_program()
     runtime_bind_located_vars();   // idempotent, allocation-free
     // The placement-new above re-ran every declared initialiser, wiping the
     // retained values with it. Restore them, or entering STOP would silently
-    // become a cold start — the transition users hit most often.
-    runtime_retain_load();
+    // become a cold start — the transition users hit most often. Only a
+    // requested cold restart (IEC 61131-3 Figure 9 rule 4) skips this.
+    if (restore) runtime_retain_load();
     scan_counter = 0;
 }
 
@@ -505,6 +546,22 @@ static bool     retain_available  = false;
 // path (modbus_config.h), which this file is deliberately not on.
 static const char *retain_program_md5 = nullptr;
 
+// One packer at a time. In RTOS mode the dispatcher saves between scans
+// (runtime_rtos_retain_save) while a function block may ask for a save from
+// inside its own scan (runtime_retain_flush_now) — both pack into the one
+// retain buffer and hand it to the one store. Innermost lock: taken after any
+// scan or image lock, never before one. Recursive, from the heap, created by
+// runtime_rtos_init(); a NULL lock (the loop build, or creation failed) locks
+// nothing, and the loop build has only one thread to begin with.
+#if OPENPLC_RTOS
+static plc_os_mutex_t s_retain_lock = nullptr;
+#  define RETAIN_LOCK()   plc_os_rmutex_lock(s_retain_lock)
+#  define RETAIN_UNLOCK() plc_os_rmutex_unlock(s_retain_lock)
+#else
+#  define RETAIN_LOCK()   ((void)0)
+#  define RETAIN_UNLOCK() ((void)0)
+#endif
+
 static uint16_t retain_read_leaf(uint8_t arr, uint16_t elem, uint8_t* dest) {
 #if OPENPLC_RTOS && defined(STRUCPP_THREADED)
     // Packed on the dispatcher, which never waits: a global a task holds this
@@ -539,6 +596,48 @@ static uint16_t retain_size_leaf(uint8_t arr, uint16_t elem) {
     return strucpp::debug::handle_size(arr, elem);
 }
 
+// A string leaf's whole content, for the format-2 blob (strings at their
+// declared length, not the debugger's 126-character window). Same locking as
+// the scalar read.
+static uint16_t retain_read_text(uint8_t arr, uint16_t elem, uint8_t* dest, uint16_t cap) {
+#if OPENPLC_RTOS && defined(STRUCPP_THREADED)
+    const int32_t g = leaf_global(arr, elem);
+    const bool held = global_lock_for(g, 0);
+    const uint16_t n = strucpp::debug::handle_read_text(arr, elem, dest, cap);
+    if (held) global_unlock(g);
+    return n;
+#else
+    return strucpp::debug::handle_read_text(arr, elem, dest, cap);
+#endif
+}
+
+// A plain write of a string leaf's content — never a force, like the scalar one.
+static uint8_t retain_write_text(uint8_t arr, uint16_t elem, const uint8_t* src, uint16_t n) {
+#if OPENPLC_RTOS && defined(STRUCPP_THREADED)
+    const int32_t g = leaf_global(arr, elem);
+    const bool held = global_lock_for(g, OPENPLC_RTOS_COMMS_GRACE_US);
+    const uint8_t status = strucpp::debug::handle_write_text(arr, elem, src, n);
+    if (held) global_unlock(g);
+    return status;
+#else
+    return strucpp::debug::handle_write_text(arr, elem, src, n);
+#endif
+}
+
+// What the format-2 walk (iec_retain.hpp) borrows from this runtime.
+static const strucpp::retain::Host retain_host = {
+    &strucpp::debug::handle_retain_leaf,
+    retain_read_leaf,
+    retain_write_leaf,
+    retain_read_text,
+    retain_write_text,
+    retain_size_leaf,
+};
+
+// The outcome of the last restore — strucpp::retain::last_report() keeps the
+// same record in the program image; this is the copy the runtime owns.
+static strucpp::retain::Report retain_report = {};
+
 // ---------------------------------------------------------------------------
 // Decide once, at start, what THIS RUNTIME can do about retention: does the
 // program retain anything, and does the blob fit the buffer this firmware
@@ -554,8 +653,10 @@ void runtime_retain_init(const char *program_md5, uint8_t *buffer, uint16_t capa
     retain_buffer       = buffer;
     retain_capacity     = buffer ? capacity : 0;
 
-    const size_t needed = strucpp::retain::blob_size(retain_size_leaf);
+    const size_t needed = strucpp::retain::blob_size2(retain_host);
     if (needed == 0) return;           // the program retains nothing
+    // The store interface carries 16-bit lengths.
+    if (needed > strucpp::retain::BLOB_MAX) return;
     // The sketch sized the buffer from this same program, so this only fails
     // for firmware built without the editor's defines.h — where degrading to
     // NON_RETAIN still beats overrunning.
@@ -586,22 +687,90 @@ void runtime_retain_load()
 {
     if (!retain_available) return;
 
+    // Read with the WHOLE buffer, not this program's blob length: the stored
+    // blob was written by the previous program, and when that one retained
+    // more (a member since removed) it is larger than ours.
+    RETAIN_LOCK();
     uint16_t got = 0;
-    const openplc_retain_status_t rc = openplc_retain_read(
-        retain_program_md5, OPLC_RETAIN_PROGRAM_ID_LEN, retain_buffer, retain_blob_len, &got);
+    uint8_t* blob = retain_buffer;
+    openplc_retain_status_t rc = openplc_retain_read(
+        retain_program_md5, OPLC_RETAIN_PROGRAM_ID_LEN, retain_buffer, retain_capacity, &got);
 
     if (rc == OPLC_RETAIN_UNSUPPORTED) {
         retain_available = false;
+        RETAIN_UNLOCK();
         return;
     }
-    if (rc != OPLC_RETAIN_OK || got == 0) return;
 
-    strucpp::retain::unpack(retain_buffer, got, retain_write_leaf, retain_size_leaf);
+#if !defined(__AVR__)
+    // Larger still than the buffer: a store that can say so reports the stored
+    // length with TOO_LARGE. Read it once more into a buffer of that size, for
+    // this restore only — every target but AVR has the heap for it, and this
+    // runs at start and on a STOP -> RUN edge, never in a scan.
+    uint8_t* spill = nullptr;
+    if (rc == OPLC_RETAIN_TOO_LARGE && got > retain_capacity) {
+        spill = static_cast<uint8_t*>(malloc(got));
+        if (spill != nullptr) {
+            const uint16_t want = got;
+            got = 0;
+            rc = openplc_retain_read(retain_program_md5, OPLC_RETAIN_PROGRAM_ID_LEN, spill, want, &got);
+            blob = spill;
+        }
+    }
+#endif
+
+    if (rc != OPLC_RETAIN_OK || got == 0) {
+        // Nothing usable: every retained variable keeps its initial value. An
+        // empty store is a first boot; anything else is still not a restore.
+        retain_report = strucpp::retain::Report{};
+        retain_report.result = static_cast<uint8_t>(rc == OPLC_RETAIN_NO_DATA || rc == OPLC_RETAIN_OK
+                                                         ? strucpp::retain::LoadResult::Empty
+                                                         : strucpp::retain::LoadResult::Truncated);
+        retain_report.program_layout = strucpp::debug::retain_layout_hash;
+        strucpp::retain::last_report() = retain_report;
+#if !defined(__AVR__)
+        free(spill);
+#endif
+        RETAIN_UNLOCK();
+        return;
+    }
+
+    // Every value whose variable still exists, by name (IEC 61131-3 6.5.6.1
+    // rule 1, p.57); nothing at all from a blob that fails its checks.
+    strucpp::retain::unpack2(blob, got, retain_host, &retain_report);
+#if !defined(__AVR__)
+    free(spill);
+#endif
+    RETAIN_UNLOCK();
 #if OPENPLC_RTOS
     // A located variable that was just restored must reach its image cell, or
     // the next copy-in would put the pre-restore value straight back.
     runtime_rtos_seed_image();
 #endif
+}
+
+// ---------------------------------------------------------------------------
+// Cold restart, IEC 61131-3 Figure 9 rule 4 (p.57): every RETAIN and
+// NON_RETAIN variable takes its initial value. The program is re-initialised
+// (which runs every declared initialiser) WITHOUT a restore, and those initial
+// values are handed to the store and committed at once — so a power cut right
+// after cannot bring the old retained values back on the next warm restart.
+// ---------------------------------------------------------------------------
+static void runtime_retain_store_initial_values()
+{
+    if (!retain_available) return;
+    RETAIN_LOCK();
+    const size_t n = strucpp::retain::pack2(retain_buffer, retain_capacity, retain_host);
+    if (n != 0) {
+        openplc_retain_write(retain_buffer, (uint16_t)n);
+        openplc_retain_flush();
+    }
+    RETAIN_UNLOCK();
+    if (n == 0) return;
+    retain_report = strucpp::retain::Report{};
+    retain_report.program_layout = strucpp::debug::retain_layout_hash;
+    retain_report.added = strucpp::debug::retain_var_count;
+    strucpp::retain::last_report() = retain_report;
 }
 
 // ---------------------------------------------------------------------------
@@ -620,11 +789,10 @@ void runtime_retain_save()
 {
     if (!retain_available) return;
 
-    const size_t n = strucpp::retain::pack(
-        retain_buffer, retain_capacity, retain_read_leaf, retain_size_leaf);
-    if (n == 0) return;
-
-    openplc_retain_write(retain_buffer, (uint16_t)n);
+    RETAIN_LOCK();
+    const size_t n = strucpp::retain::pack2(retain_buffer, retain_capacity, retain_host);
+    if (n != 0) openplc_retain_write(retain_buffer, (uint16_t)n);
+    RETAIN_UNLOCK();
 }
 
 // ---------------------------------------------------------------------------
@@ -638,7 +806,44 @@ void runtime_retain_save()
 void runtime_retain_flush()
 {
     if (!retain_available) return;
+    RETAIN_LOCK();
     openplc_retain_flush();
+    RETAIN_UNLOCK();
+}
+
+// ---------------------------------------------------------------------------
+// Save the retained values NOW and commit them, from inside a scan.
+//
+// For a block about to take the board down on purpose — a controlled restart,
+// deep sleep — which no power-cut path and no STOP will flush: the store may be
+// holding up to one flush period of changes. Packs the current values (this
+// scan's, as they stand) and commits them through the store's write + flush,
+// the same two calls a clean STOP makes, before returning.
+//
+// Safe from a function block in either build. Loop build: one thread, nothing
+// else touches the buffer. RTOS build: the caller's task holds its own scan
+// lock, which the dispatcher's periodic save also needs, so the two can meet
+// only through a stalled task — the retain lock serialises them. A global is
+// read under its lock when free and as it stands otherwise, like every save.
+//
+// Blocks for the pack plus the store's commit: microseconds to pack, and on
+// flash the write itself (an ESP32 NVS commit of a few kilobytes is ~10-50 ms).
+// Returns OPLC_RETAIN_OK (0) when the values are committed, or the store's
+// status; OPLC_RETAIN_UNSUPPORTED (2) when nothing is retained or the board
+// stores nothing — so a caller may treat any non-zero as "not saved".
+// ---------------------------------------------------------------------------
+extern "C" uint8_t runtime_retain_flush_now(void)
+{
+    if (!retain_available) return OPLC_RETAIN_UNSUPPORTED;
+    RETAIN_LOCK();
+    openplc_retain_status_t rc = OPLC_RETAIN_IO_ERROR;
+    const size_t n = strucpp::retain::pack2(retain_buffer, retain_capacity, retain_host);
+    if (n != 0) {
+        rc = openplc_retain_write(retain_buffer, (uint16_t)n);
+        if (rc == OPLC_RETAIN_OK) rc = openplc_retain_flush();
+    }
+    RETAIN_UNLOCK();
+    return static_cast<uint8_t>(rc);
 }
 
 // ---------------------------------------------------------------------------
@@ -674,6 +879,20 @@ void runtime_plc_cycle()
 
     const uint8_t new_state =
         (sw == PLC_SWITCH_STOP || software_stop) ? PLC_STATE_STOPPED : PLC_STATE_RUNNING;
+
+    // A requested cold restart (accepted only while STOPPED), done here at
+    // the STOP -> RUN edge in place of the warm restore: it ends RUNNING with
+    // no RUN-edge restore below, because the values it just stored ARE the
+    // initial values, and a store that failed to take them must not hand the
+    // old ones back. If the switch went to STOP meanwhile, STOP wins and the
+    // request lapses.
+    if (cold_restart_pending) {
+        cold_restart_pending = false;
+        if (new_state == PLC_STATE_RUNNING) {
+            runtime_cold_restart();
+            plc_state = PLC_STATE_RUNNING;
+        }
+    }
 
     // Entering STOP is a cold stop: zero the outputs and re-initialise the
     // program exactly once, on the transition.
@@ -780,6 +999,7 @@ extern "C" void runtime_rtos_init(void)
 {
     if (!s_image_lock) s_image_lock = plc_os_mutex_create();
     if (!s_image_lock) runtime_rtos_fault();
+    if (!s_retain_lock) s_retain_lock = plc_os_rmutex_create();
 }
 
 // RTOS mode could not be set up (a task or a lock could not be created): the
@@ -1493,12 +1713,49 @@ static void unlock_all_workers(void) { runtime_rtos_unlock_workers(all_workers()
 // Called with every task idle; every scan lock keeps services out of g_config.
 extern "C" void runtime_rtos_enter_stop(void)
 {
+    // A cold restart still waiting lapses: STOP won (the switch, or a stop
+    // request after it), exactly as in the scan loop.
+    __atomic_store_n(&cold_restart_pending, false, __ATOMIC_RELEASE);
     lock_all_workers();
     runtime_retain_save();
     runtime_retain_flush();
     plc_os_mutex_lock(s_image_lock);   // re-initialisation rewrites the cells too
     runtime_reinit_program();
     __atomic_store_n(&plc_state, (uint8_t)PLC_STATE_STOPPED, __ATOMIC_RELEASE);
+    plc_os_mutex_unlock(s_image_lock);
+    unlock_all_workers();
+}
+
+// Whether a cold restart is waiting. Accepted only while STOPPED, so no task is
+// running: the dispatcher carries it out at the STOP -> RUN edge, in place of
+// runtime_rtos_enter_run().
+extern "C" bool runtime_rtos_cold_restart_pending(void)
+{
+    return __atomic_load_n(&cold_restart_pending, __ATOMIC_ACQUIRE);
+}
+
+// The switch went to STOP before the dispatcher got to it: the request lapses.
+extern "C" void runtime_rtos_cold_restart_cancel(void)
+{
+    __atomic_store_n(&cold_restart_pending, false, __ATOMIC_RELEASE);
+}
+
+// Cold restart (IEC 61131-3 Figure 9 rule 4), from STOP, every task parked:
+// re-initialise without a restore, store the initial values, run from
+// `run_tick`.
+extern "C" void runtime_rtos_cold_restart(uint64_t run_tick)
+{
+    lock_all_workers();
+    plc_os_mutex_lock(s_image_lock);   // re-initialisation rewrites the cells too
+    __atomic_store_n(&cold_restart_pending, false, __ATOMIC_RELEASE);
+    runtime_cold_restart();
+    runtime_rtos_seed_image();
+    for (uint32_t w = 0; w < s_worker_count; ++w) {
+        if (s_workers[w].program_next) {
+            for (size_t p = 0; p < s_workers[w].program_count; ++p) s_workers[w].program_next[p] = run_tick;
+        }
+    }
+    __atomic_store_n(&plc_state, (uint8_t)PLC_STATE_RUNNING, __ATOMIC_RELEASE);
     plc_os_mutex_unlock(s_image_lock);
     unlock_all_workers();
 }

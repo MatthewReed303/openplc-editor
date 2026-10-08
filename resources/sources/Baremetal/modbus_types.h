@@ -74,6 +74,10 @@ protocol, transport, register and debug layers agree on the same contracts.
 // warning rather than a generic failure. It doesn't collide with Modbus
 // exceptions (0x01-0x04) nor 0x7E/0x81/0x82.
 #define MB_PLC_CTRL_REFUSED_SWITCH       0x86
+// MB_FC_PLC_SET_STATE only: a cold restart (request 0x03) was refused because
+// the PLC is running. Discarding retained values must follow a deliberate STOP
+// (as on the OpenPLC Linux runtime). 0x87 is READ_ONLY.
+#define MB_PLC_CTRL_REFUSED_RUNNING      0x88
 // MB_FC_REBOOT_BOOTLOADER only: well-formed but refused because the device's
 // programming lock is engaged. Not an error code, because the editor keeps
 // asking for a few seconds while the user clears the lock at the device.

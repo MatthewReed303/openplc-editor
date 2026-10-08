@@ -825,8 +825,20 @@ static void dispatch_forever(void)
         // nothing is released meanwhile. A RUN releases every task on this tick.
         uint8_t state = runtime_rtos_state();
         const uint8_t wanted = runtime_rtos_wanted_state();
+        // A cold restart (IEC 61131-3 Figure 9 rule 4) is accepted only while
+        // STOPPED, so every task is already parked: it takes the place of the
+        // STOP -> RUN edge, re-initialising without a restore. If the switch
+        // keeps the PLC stopped, it lapses.
+        const bool cold = runtime_rtos_cold_restart_pending();
+        if (cold && state == PLC_STATE_STOPPED && wanted == PLC_STATE_STOPPED) runtime_rtos_cold_restart_cancel();
         if (state == PLC_STATE_RUNNING && wanted == PLC_STATE_STOPPED) stop_pending = true;
-        if (stop_pending && all_idle()) {
+        if (cold && state == PLC_STATE_STOPPED && wanted == PLC_STATE_RUNNING) {
+            runtime_rtos_cold_restart(run_tick);
+            for (uint32_t w = 0; w < s_worker_count; ++w) s_workers[w].next_tick = run_tick;
+            retain_due = run_tick;
+            stop_pending = false;
+            state = PLC_STATE_RUNNING;
+        } else if (stop_pending && all_idle()) {
             runtime_rtos_enter_stop();
             stop_pending = false;
             state = PLC_STATE_STOPPED;

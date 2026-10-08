@@ -60,6 +60,7 @@ Same mechanism, and the same reasoning, as license_store_weak.cpp.
     defined(OPLC_RETAIN_STORE_STM32_FLASH) || defined(OPLC_RETAIN_STORE_EEPROM_BYTES)
 
 #include <string.h>
+#include <stdlib.h>
 #include "license_blob.h"   // LIC_BLOB_SIZE: the license store's region at the bottom of EEPROM
 
 namespace {
@@ -91,10 +92,36 @@ openplc_retain_status_t save_pending()
 const char *const kNamespace = "oplc_retain";
 const char *const kKey       = "blob";
 
-// What NVS holds, to tell a change without reading flash every scan. ESP32 has
-// the RAM for it.
-uint8_t  s_shadow[OPLC_RETAIN_BLOB_SIZE];
+// What NVS holds, to tell a change without reading flash every scan. On the
+// heap and grown to what is actually stored, not a static array of this
+// program's blob size: a program can retain tens of kilobytes (a 128 KB NVS
+// partition holds a blob of about half that, since an update keeps the old
+// copy until the new one is written), and on a board with PSRAM an allocation
+// this size lands there instead of in internal RAM. It is a cache only — if it
+// cannot be had, every changed blob is simply treated as a change.
+uint8_t* s_shadow     = nullptr;
 uint16_t s_shadow_len = 0;
+uint16_t s_shadow_cap = 0;
+
+bool shadow_reserve(uint16_t len)
+{
+    if (len <= s_shadow_cap) return true;
+    uint8_t* grown = static_cast<uint8_t*>(realloc(s_shadow, len));
+    if (grown == nullptr) return false;
+    s_shadow = grown;
+    s_shadow_cap = len;
+    return true;
+}
+
+void shadow_set(const uint8_t* bytes, uint16_t len)
+{
+    if (shadow_reserve(len)) {
+        memcpy(s_shadow, bytes, len);
+        s_shadow_len = len;
+    } else {
+        s_shadow_len = 0xFFFF;   // unknown: the next blob differs
+    }
+}
 
 openplc_retain_status_t store_read(uint8_t *out, uint16_t cap, uint16_t *out_len)
 {
@@ -103,13 +130,15 @@ openplc_retain_status_t store_read(uint8_t *out, uint16_t cap, uint16_t *out_len
     if (!prefs.begin(kNamespace, true)) return OPLC_RETAIN_NO_DATA;
     const size_t n = prefs.getBytesLength(kKey);
     if (n == 0) { prefs.end(); return OPLC_RETAIN_NO_DATA; }
-    if (n > cap || n > sizeof(s_shadow)) { prefs.end(); return OPLC_RETAIN_TOO_LARGE; }
+    if (n > 0xFFFF) { prefs.end(); return OPLC_RETAIN_IO_ERROR; }
+    // Larger than the caller's buffer — an older program that retained more.
+    // Say how large, so the runtime can read it into a buffer that fits.
+    if (n > cap) { prefs.end(); *out_len = (uint16_t)n; return OPLC_RETAIN_TOO_LARGE; }
     const size_t got = prefs.getBytes(kKey, out, cap);
     prefs.end();
     if (got != n) return OPLC_RETAIN_IO_ERROR;
     *out_len = (uint16_t)n;
-    memcpy(s_shadow, out, n);
-    s_shadow_len = (uint16_t)n;
+    shadow_set(out, (uint16_t)n);
     return OPLC_RETAIN_OK;
 }
 
@@ -120,29 +149,36 @@ bool store_differs(const uint8_t *bytes, uint16_t len)
 
 openplc_retain_status_t store_write(const uint8_t *bytes, uint16_t len)
 {
-    if (len > sizeof(s_shadow)) return OPLC_RETAIN_TOO_LARGE;
     Preferences prefs;
     if (!prefs.begin(kNamespace, false)) return OPLC_RETAIN_IO_ERROR;
     const size_t put = prefs.putBytes(kKey, bytes, len);
     prefs.end();
     if (put != len) return OPLC_RETAIN_IO_ERROR;
-    memcpy(s_shadow, bytes, len);
-    s_shadow_len = len;
+    shadow_set(bytes, len);
     return OPLC_RETAIN_OK;
 }
 
 #else  // the three EEPROM stores share one record layout
 
-// [magic 4][length 2, little-endian][blob], at the top of the EEPROM.
-const uint8_t  kMagic[4] = {'O', 'R', 'T', '1'};
-const uint16_t kHeader   = 6;
-const uint16_t kRecord   = kHeader + OPLC_RETAIN_BLOB_SIZE;
+// The record ends exactly at the top of the EEPROM, its header LAST:
+//
+//     ... [blob, `len` bytes][len u16 LE]['O','R','T','2']|  <- eeprom_length()
+//
+// so the header is at a fixed address whatever the blob's size. The previous
+// layout ('ORT1': [magic][len][blob], placed at eeprom_length() - 6 - len) put
+// the header at an address computed from THIS program's blob size, so any
+// program whose retained declarations changed size looked in the wrong place,
+// found nothing, and started every retained variable from its initial value.
+// An ORT1 record is still found (by scanning for it; it always ends at the top)
+// and the next save rewrites it as ORT2.
+const uint8_t  kMagic2[4] = {'O', 'R', 'T', '2'};
+const uint8_t  kMagic1[4] = {'O', 'R', 'T', '1'};
+const uint16_t kHeader    = 6;
 
 // The bottom of the EEPROM is the license store's on licensed AVR and ESP8266
 // boards: a 2-byte length and the blob from offset 0. A retain record that would
 // reach into it is refused (TOO_LARGE) rather than written over a license.
 const uint16_t kReservedLow = LIC_BLOB_SIZE + 2;
-bool record_fits(uint16_t eeprom_len) { return eeprom_len >= kReservedLow && eeprom_len - kReservedLow >= kRecord; }
 
 #if defined(OPLC_RETAIN_STORE_EEPROM_COMMIT)
 // One emulated sector, held in RAM by the core. begin() re-reads it, so a
@@ -173,20 +209,58 @@ void     eeprom_put(uint16_t a, uint8_t v) { EEPROM.update(a, v); }        // wr
 bool     eeprom_close()                    { return true; }
 #endif
 
-uint16_t record_base() { return eeprom_length() - kRecord; }
+/** Largest blob a record can hold on this EEPROM, 0 when none fits. */
+uint16_t record_room()
+{
+    const uint16_t len = eeprom_length();
+    return len >= kReservedLow + kHeader ? (uint16_t)(len - kReservedLow - kHeader) : 0;
+}
+
+bool magic_at(uint16_t a, const uint8_t* magic)
+{
+    for (uint16_t i = 0; i < 4; ++i) {
+        if (eeprom_get(a + i) != magic[i]) return false;
+    }
+    return true;
+}
+
+/** Where the stored blob starts and how long it is; false when there is none. */
+bool locate(uint16_t* base, uint16_t* len)
+{
+    const uint16_t end = eeprom_length();
+    const uint16_t room = record_room();
+    if (room == 0) return false;
+    if (magic_at(end - 4, kMagic2)) {
+        const uint16_t n = (uint16_t)(eeprom_get(end - 6) | (eeprom_get(end - 5) << 8));
+        if (n == 0 || n > room) return false;
+        *base = end - kHeader - n;
+        *len = n;
+        return true;
+    }
+    // An ORT1 record from an older firmware: [ORT1][len][blob] ending at `end`.
+    for (uint16_t at = end - kHeader; at >= kReservedLow; --at) {
+        if (magic_at(at, kMagic1)) {
+            const uint16_t n = (uint16_t)(eeprom_get(at + 4) | (eeprom_get(at + 5) << 8));
+            if (n != 0 && (uint32_t)at + kHeader + n == end) {
+                *base = at + kHeader;
+                *len = n;
+                return true;
+            }
+        }
+        if (at == 0) break;
+    }
+    return false;
+}
 
 openplc_retain_status_t store_read(uint8_t *out, uint16_t cap, uint16_t *out_len)
 {
-    if (!record_fits(eeprom_length())) return OPLC_RETAIN_TOO_LARGE;
+    if (record_room() == 0) return OPLC_RETAIN_TOO_LARGE;
     eeprom_open();
-    const uint16_t base = record_base();
-    for (uint16_t i = 0; i < 4; ++i) {
-        if (eeprom_get(base + i) != kMagic[i]) return OPLC_RETAIN_NO_DATA;
-    }
-    const uint16_t len = (uint16_t)(eeprom_get(base + 4) | (eeprom_get(base + 5) << 8));
-    if (len == 0) return OPLC_RETAIN_NO_DATA;
-    if (len > cap || len > OPLC_RETAIN_BLOB_SIZE) return OPLC_RETAIN_TOO_LARGE;
-    for (uint16_t i = 0; i < len; ++i) out[i] = eeprom_get(base + kHeader + i);
+    uint16_t base = 0, len = 0;
+    if (!locate(&base, &len)) return OPLC_RETAIN_NO_DATA;
+    // Larger than the caller's buffer — an older program that retained more.
+    if (len > cap) { *out_len = len; return OPLC_RETAIN_TOO_LARGE; }
+    for (uint16_t i = 0; i < len; ++i) out[i] = eeprom_get(base + i);
     *out_len = len;
     return OPLC_RETAIN_OK;
 }
@@ -194,27 +268,31 @@ openplc_retain_status_t store_read(uint8_t *out, uint16_t cap, uint16_t *out_len
 // Compared with what the EEPROM (or the core's RAM copy of it) already holds.
 bool store_differs(const uint8_t *bytes, uint16_t len)
 {
-    if (!record_fits(eeprom_length())) return false;   // cannot be stored at all
-    const uint16_t base = record_base();
-    for (uint16_t i = 0; i < 4; ++i) {
-        if (eeprom_get(base + i) != kMagic[i]) return true;
-    }
-    if (eeprom_get(base + 4) != (uint8_t)(len & 0xFF) || eeprom_get(base + 5) != (uint8_t)(len >> 8)) return true;
+    if (len == 0) return false;
+    // Too large to store at all: "differs", so the save is attempted (once per
+    // period) and answers TOO_LARGE instead of reporting a store that never
+    // happened as done. Nothing is written.
+    if (len > record_room()) return true;
+    const uint16_t end = eeprom_length();
+    if (!magic_at(end - 4, kMagic2)) return true;
+    if (eeprom_get(end - 6) != (uint8_t)(len & 0xFF) || eeprom_get(end - 5) != (uint8_t)(len >> 8)) return true;
+    const uint16_t base = end - kHeader - len;
     for (uint16_t i = 0; i < len; ++i) {
-        if (eeprom_get(base + kHeader + i) != bytes[i]) return true;
+        if (eeprom_get(base + i) != bytes[i]) return true;
     }
     return false;
 }
 
 openplc_retain_status_t store_write(const uint8_t *bytes, uint16_t len)
 {
-    if (len > OPLC_RETAIN_BLOB_SIZE || !record_fits(eeprom_length())) return OPLC_RETAIN_TOO_LARGE;
+    if (len == 0 || len > record_room()) return OPLC_RETAIN_TOO_LARGE;
     eeprom_open();
-    const uint16_t base = record_base();
-    for (uint16_t i = 0; i < 4; ++i) eeprom_put(base + i, kMagic[i]);
-    eeprom_put(base + 4, (uint8_t)(len & 0xFF));
-    eeprom_put(base + 5, (uint8_t)(len >> 8));
-    for (uint16_t i = 0; i < len; ++i) eeprom_put(base + kHeader + i, bytes[i]);
+    const uint16_t end = eeprom_length();
+    const uint16_t base = end - kHeader - len;
+    for (uint16_t i = 0; i < len; ++i) eeprom_put(base + i, bytes[i]);
+    eeprom_put(end - 6, (uint8_t)(len & 0xFF));
+    eeprom_put(end - 5, (uint8_t)(len >> 8));
+    for (uint16_t i = 0; i < 4; ++i) eeprom_put(end - 4 + i, kMagic2[i]);
     return eeprom_close() ? OPLC_RETAIN_OK : OPLC_RETAIN_IO_ERROR;
 }
 

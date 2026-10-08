@@ -312,13 +312,31 @@ void setup()
     //
     // PROGRAM_MD5 and the buffer size are passed from here because the sketch
     // is on defines.h's one legitimate include path and the glue is not. The
-    // buffer is exactly this program's retain blob (OPLC_RETAIN_BLOB_SIZE), so
-    // there is no fixed cap: a program retains as much as its storage holds,
-    // and the store answers TOO_LARGE if the board's storage is smaller.
+    // buffer is this program's retain blob (OPLC_RETAIN_BLOB_SIZE: format 2,
+    // the descriptor trailer included), so there is no fixed cap: a program
+    // retains as much as its storage holds, and the store answers TOO_LARGE if
+    // the board's storage is smaller.
 #ifdef OPLC_RETAIN_BLOB_SIZE
     static_assert(OPLC_RETAIN_BLOB_SIZE <= 65535,
                   "The retain interface carries 16-bit lengths: retain fewer than 64 KB.");
-    static uint8_t retain_storage[OPLC_RETAIN_BLOB_SIZE];
+    // Headroom, AVR only. The stored blob was written by the PREVIOUS program;
+    // when that one retained more (a member since removed), it is larger than
+    // this program's, and restoring its values by name needs it in RAM. Every
+    // other target reads such a blob into a temporary heap buffer instead
+    // (runtime_retain_load); an AVR has no heap budget for that, so the buffer
+    // is a quarter larger, plus room for a few removed variables. Override with
+    // OPLC_RETAIN_HEADROOM in a board's defines when SRAM is tighter still.
+#  if defined(__AVR__)
+#    ifndef OPLC_RETAIN_HEADROOM
+#      define OPLC_RETAIN_HEADROOM (OPLC_RETAIN_BLOB_SIZE / 4 + 32)
+#    endif
+#  else
+#    undef OPLC_RETAIN_HEADROOM
+#    define OPLC_RETAIN_HEADROOM 0
+#  endif
+#  define OPLC_RETAIN_BUFFER_SIZE \
+    ((OPLC_RETAIN_BLOB_SIZE + OPLC_RETAIN_HEADROOM) > 65535 ? 65535 : (OPLC_RETAIN_BLOB_SIZE + OPLC_RETAIN_HEADROOM))
+    static uint8_t retain_storage[OPLC_RETAIN_BUFFER_SIZE];
     runtime_retain_init(PROGRAM_MD5, retain_storage, (uint16_t)sizeof(retain_storage));
 #else
     runtime_retain_init(PROGRAM_MD5, nullptr, 0);

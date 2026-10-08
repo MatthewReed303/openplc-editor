@@ -385,7 +385,7 @@ void debugGetStatus()
     mb_frame_len = 13;
 }
 
-// PDU request:  [FC][state:u8]        (0 = STOP, 1 = RUN)
+// PDU request:  [FC][state:u8]        (0 = STOP, 1 = RUN, 3 = COLD RESTART)
 // PDU response: [FC][status][plc_state:u8][switch_position:u8]
 //
 // Command only -- reading the state is debugGetStatus() (FC 0x46) above, which
@@ -401,9 +401,22 @@ void plcSetState(uint8_t desired)
 {
     uint8_t status = MB_DEBUG_SUCCESS;
 
-    const uint8_t target = (desired == 0x01) ? PLC_STATE_RUNNING : PLC_STATE_STOPPED;
-    if (runtime_request_plc_state(target) == PLC_CTRL_REFUSED_SWITCH_STOP)
+    // 0x03 asks for a COLD restart (IEC 61131-3 Figure 9 rule 4): every
+    // variable, RETAIN included, back to its initial value, then RUN. From
+    // STOP only: refused with MB_PLC_CTRL_REFUSED_RUNNING while running. Not 0x02,
+    // which is PLC_STATE_ERROR in the replies. A firmware older than this
+    // reads 0x03 as STOP, which is the safe failure.
+    uint8_t outcome;
+    if (desired == 0x03) {
+        outcome = runtime_request_cold_restart();
+    } else {
+        const uint8_t target = (desired == 0x01) ? PLC_STATE_RUNNING : PLC_STATE_STOPPED;
+        outcome = runtime_request_plc_state(target);
+    }
+    if (outcome == PLC_CTRL_REFUSED_SWITCH_STOP)
         status = MB_PLC_CTRL_REFUSED_SWITCH;
+    else if (outcome == PLC_CTRL_REFUSED_RUNNING)
+        status = MB_PLC_CTRL_REFUSED_RUNNING;
 
     mb_frame[1] = MB_FC_PLC_SET_STATE;
     mb_frame[2] = status;
