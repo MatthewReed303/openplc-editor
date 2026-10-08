@@ -18,6 +18,7 @@ import { executeSaveProject } from '@root/frontend/services/save-actions'
 import type { OpenPLCStore } from '@root/frontend/store'
 import { EDITOR_CAPABILITIES } from '@root/middleware/shared/ports/platform-capabilities'
 
+import { libraryScopeErrors } from '../apply/library-scope'
 import { applySpec, type PlannedChange } from '../apply/plan'
 import { parseApplySpec } from '../apply/schema'
 import { boolFlag, type ParsedArgs, stringFlag } from '../args'
@@ -104,6 +105,23 @@ export async function runApply(store: OpenPLCStore, args: ParsedArgs, reporter: 
     return reporter.failure(
       { code: ErrorCode.TargetError, message: 'This project has no location on disk, so nothing would be saved.' },
       ExitCode.TargetError,
+    )
+  }
+
+  // A library's save writes no devices/ folder, so a device section (or a
+  // server, or a remote device) would apply to the store, report "saved", and
+  // be gone on exit. Refused before anything is applied.
+  const outOfScope = loaded.project.isLibrary ? libraryScopeErrors(parsed.spec) : []
+  if (outOfScope.length > 0) {
+    return reporter.partial(
+      { ok: false, project: loaded.project.name, changes: [], errors: outOfScope, saved: false },
+      {
+        code: ErrorCode.InvalidArgument,
+        message: `${outOfScope.length} problem(s) in the spec for a library project — nothing was saved.`,
+        details: outOfScope,
+      },
+      ExitCode.CompileFailed,
+      () => render([], outOfScope, false),
     )
   }
 
