@@ -124,7 +124,8 @@ export default class MenuBuilder {
 
   /**
    * Open Recent — hand the renderer the PATH and let it open the project the
-   * same way every other entry point does.
+   * same way every other entry point does. The renderer opens it through
+   * project:read-files, which sets the file-access root.
    *
    * This used to read the project here and send the service response across,
    * which crashed the renderer twice over: the response is an envelope
@@ -510,7 +511,7 @@ export default class MenuBuilder {
         return {
           label: `${projectName} (${projectPath})`,
           click: () => {
-            void this.handleOpenProjectByPath(projectEntry.path)
+            this.handleOpenProjectByPath(projectEntry.path)
           },
         }
       }),
@@ -862,7 +863,7 @@ export default class MenuBuilder {
           return {
             label: `${projectName} (${projectPath})`,
             click: () => {
-              void this.handleOpenProjectByPath(projectEntry.path)
+              this.handleOpenProjectByPath(projectEntry.path)
             },
           }
         }),

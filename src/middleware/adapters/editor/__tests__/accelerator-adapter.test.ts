@@ -186,14 +186,19 @@ describe('onOpenRecent', () => {
     expect(cb).toHaveBeenCalledWith('/some/path')
   })
 
-  it('passes undefined rather than a payload it cannot use', () => {
+  it.each([
+    undefined,
+    null,
+    { success: true, data: { meta: { path: '/some/path' } } },
+    { projectPath: '/some/path' },
+    1,
+  ])('drops a payload that is not a path (%p)', (payload) => {
     const cb = jest.fn()
     adapter.onOpenRecent(cb)
 
-    // A version-skewed main process still sending the old response envelope.
-    fire('openRecent', {}, { success: true, data: { meta: {}, content: {} } })
+    fire('openRecent', {}, payload)
 
-    expect(cb).toHaveBeenCalledWith(undefined)
+    expect(cb).not.toHaveBeenCalled()
   })
 
   it('returns an unsubscribe function that deactivates the callback', () => {

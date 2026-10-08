@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import {
   useAccelerator,
@@ -9,6 +9,7 @@ import {
   useWindow,
 } from '../../../middleware/shared/providers'
 import { requestAppRefresh } from '../../services/refresh-app'
+import { restoreOpenProjectRoot } from '../../services/restore-open-project-root'
 import { executeSaveActiveFile, executeSaveProject } from '../../services/save-actions'
 import { executeSaveProjectAs } from '../../services/save-project-as'
 import { type OpenPLCStore, useOpenPLCStore, useOpenPLCStoreApi } from '../../store'
@@ -55,7 +56,6 @@ const AcceleratorHandler = () => {
   } = useOpenPLCStore()
   const isMonacoFocused: boolean = useOpenPLCStore((state) => state.isMonacoFocused)
   const selectedProjectTreeLeaf = useOpenPLCStore((state) => state.workspace.selectedProjectTreeLeaf)
-  const pendingRecentProjectRef = useRef<string | null>(null)
 
   const executeSave = useCallback(
     () => executeSaveProject(store, projectPort, capabilities),
@@ -129,10 +129,19 @@ const AcceleratorHandler = () => {
         case 'saved':
         case 'initial-state':
           void (async () => {
-            const result = await projectPort.openProject()
-            if (result.success && result.data) {
+            const openPath = store.getState().project.meta.path
+            const result = await projectPort.openProject().catch(() => null)
+            if (result?.success && result.data) {
               handleOpenProjectResponse(result.data)
+              return
             }
+            if (result) return
+            restoreOpenProjectRoot(projectPort, openPath)
+            toast({
+              title: 'Cannot open the project.',
+              description: 'The selected project could not be loaded.',
+              variant: 'fail',
+            })
           })()
           break
         case 'unsaved':
@@ -152,10 +161,10 @@ const AcceleratorHandler = () => {
       }
     })
     return unsub
-  }, [editingState, accelerator, openModal, projectPort, handleOpenProjectResponse])
+  }, [store, editingState, accelerator, openModal, projectPort, handleOpenProjectResponse])
 
   /**
-   * Open recent project (editor-specific — the PATH arrives via IPC).
+   * Open recent project (editor-specific — the native Recent menu sends the project path)
    *
    * Opening goes through `projectPort.openProjectByPath` like the start
    * screen, the recents list and File → Open, so the files are parsed into the
@@ -163,43 +172,45 @@ const AcceleratorHandler = () => {
    * main process used to read the project and send its response, which was
    * neither unwrapped nor parsed and crashed the renderer on every recent.
    */
-  const openRecentByPath = useCallback(
-    async (projectPath: string) => {
-      const result = await projectPort.openProjectByPath(projectPath)
-      if (result.success && result.data) {
-        handleOpenProjectResponse(result.data)
+  const openRecentProject = useCallback(
+    async (projectPath: string, changesConfirmed: boolean) => {
+      const openPath = store.getState().project.meta.path
+      const result = await projectPort.openProjectByPath(projectPath).catch(() => null)
+      if (result?.success && result.data) {
+        const data = result.data
+        // An edit made while the read was pending has not been through the save prompt yet.
+        if (!changesConfirmed && store.getState().workspace.editingState === 'unsaved') {
+          openModal('save-changes-project', {
+            validationContext: 'open-recent-project',
+            onAfterAction: () => handleOpenProjectResponse(data),
+            onActionAborted: () => restoreOpenProjectRoot(projectPort, openPath),
+          })
+          return
+        }
+        handleOpenProjectResponse(data)
         return
       }
+      if (!result) restoreOpenProjectRoot(projectPort, openPath)
       toast({
         title: 'Cannot open the project.',
-        description: result.error?.description ?? `The path ${projectPath} does not exist on this computer.`,
+        description: result?.error?.description ?? `The path ${projectPath} does not exist on this computer.`,
         variant: 'fail',
       })
     },
-    [projectPort, handleOpenProjectResponse],
+    [store, projectPort, openModal, handleOpenProjectResponse],
   )
 
   useEffect(() => {
-    const unsub = accelerator.onOpenRecent((projectPath?: string) => {
+    const unsub = accelerator.onOpenRecent((projectPath: string) => {
       switch (editingState) {
         case 'saved':
         case 'initial-state':
-          if (projectPath) {
-            void openRecentByPath(projectPath)
-          }
+          void openRecentProject(projectPath, false)
           break
         case 'unsaved':
-          // Hold the path and open it once the save modal has been answered.
-          pendingRecentProjectRef.current = projectPath ?? null
           openModal('save-changes-project', {
             validationContext: 'open-recent-project',
-            onAfterAction: () => {
-              const pending = pendingRecentProjectRef.current
-              pendingRecentProjectRef.current = null
-              if (pending) {
-                void openRecentByPath(pending)
-              }
-            },
+            onAfterAction: () => void openRecentProject(projectPath, true),
           })
           break
         case 'save-request':
@@ -214,7 +225,7 @@ const AcceleratorHandler = () => {
       }
     })
     return unsub
-  }, [editingState, accelerator, openModal, openRecentByPath])
+  }, [editingState, accelerator, openModal, openRecentProject])
 
   /**
    * Close project

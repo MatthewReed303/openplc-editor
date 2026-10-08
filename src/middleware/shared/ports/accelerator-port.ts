@@ -39,8 +39,8 @@ export interface AcceleratorPort {
   // --- Project actions ---
   onCreateProject(callback: () => void): Unsubscribe
   onOpenProject(callback: () => void): Unsubscribe
-  /** Fires with the PATH of the recent project to open. */
-  onOpenRecent(callback: (projectPath?: string) => void): Unsubscribe
+  /** Fires with the PATH of the recent project to open; a payload that is not a path is dropped. */
+  onOpenRecent(callback: (projectPath: string) => void): Unsubscribe
   onSaveProject(callback: () => void): Unsubscribe
   /** Save As. Desktop only in practice; web's adapter returns a no-op
    *  unsubscribe like its other accelerators. */
