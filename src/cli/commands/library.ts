@@ -16,6 +16,7 @@
 
 import { CompilerModule } from '@root/backend/editor/compiler'
 import { LibraryManagerModule } from '@root/backend/editor/library-manager'
+import { libraryVerifyProject } from '@root/backend/shared/library/library-verify-data'
 import { collectNativePous } from '@root/backend/shared/library/native-pou-list'
 import { preprocessPous } from '@root/backend/shared/utils/PLC/preprocess-pous'
 import type { OpenPLCStore } from '@root/frontend/store'
@@ -150,7 +151,8 @@ function prepareLibraryData(
 
   // A library's own POU may hold a function block instance, so preprocessing
   // needs the same pin sources a project build gets.
-  const fbSources = new LibraryManagerModule().loadAll().map((archive) => ({
+  const archives = new LibraryManagerModule().loadAll() as StlibArchiveDTO[]
+  const fbSources = archives.map((archive) => ({
     functionBlocks: archive.manifest.functionBlocks,
   }))
 
@@ -165,8 +167,16 @@ function prepareLibraryData(
     return { error: buildPass.validationError ?? VALIDATION_FALLBACK }
   }
 
+  // The verification compile is a consumer build: it gets the enabled libraries'
+  // C/C++ and Python blocks grafted in, as a program build does. The build pass
+  // above must not (see library-verify-data.ts).
+  const verifySource = libraryVerifyProject(projectData, archives)
+  if ('error' in verifySource) {
+    return { error: verifySource.error }
+  }
+
   // Silent: the same project already logged its POUs on the build pass.
-  const verifyPass = preprocessPous(projectData, true, () => undefined, undefined, fbSources)
+  const verifyPass = preprocessPous(verifySource.projectData, true, () => undefined, undefined, fbSources)
   if (verifyPass.validationFailed) {
     return { error: verifyPass.validationError ?? VALIDATION_FALLBACK }
   }

@@ -15,6 +15,7 @@ import {
   findLibrariesMissingNativeSources,
   injectLibraryBlocks,
 } from '../../../backend/shared/library/inject-library-blocks'
+import { libraryVerifyProject } from '../../../backend/shared/library/library-verify-data'
 import { collectNativePous, type NativePouRef } from '../../../backend/shared/library/native-pou-list'
 import { preprocessPous } from '../../../backend/shared/utils/PLC/preprocess-pous'
 import type {
@@ -343,8 +344,15 @@ export function createEditorCompilerAdapter(deps: EditorCompilerAdapterDeps = {}
             'POU validation failed. Check C/C++ code for missing setup()/loop() functions.',
         }
       }
+      // The verification compile is a consumer build: the enabled libraries'
+      // C/C++ and Python blocks are grafted in, as a program build does. The
+      // build pass above must not (see library-verify-data.ts).
+      const verifySource = libraryVerifyProject(args.projectData, libraryArchives)
+      if ('error' in verifySource) {
+        return { success: false, error: verifySource.error }
+      }
       const verifyResult = preprocessPous(
-        args.projectData,
+        verifySource.projectData,
         true,
         () => {
           // Silent — the build pass above already logged this project.
