@@ -1,12 +1,13 @@
-import { describeInOutLeaf } from '../../../utils/inout-force'
+import { describeInOutLeaf, describeRawLeaf } from '../../../utils/inout-force'
 
 /**
  * The first line of a force menu opened on a function-block in-out: what the
  * in-out shows, and where a force goes (IEC 61131-3 §3.48 — an in-out is the
- * caller's variable). Renders nothing for an ordinary variable.
+ * caller's variable). For an array element stored without a forcing wrapper,
+ * why no force is offered. Renders nothing for an ordinary variable.
  */
 const DebugInOutNote = ({ debugIndex }: { debugIndex: number | undefined }) => {
-  const text = describeInOutLeaf(debugIndex)
+  const text = describeInOutLeaf(debugIndex) ?? describeRawLeaf(debugIndex)
   if (text === undefined) return null
   return (
     <p

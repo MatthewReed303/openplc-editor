@@ -223,8 +223,14 @@ const ResponseDataSchema = z.discriminatedUnion('kind', [
         name: z.string(),
         type: z.string(),
         size: z.number(),
-        /** Never forced: a CONSTANT, or a function block's in-out. */
+        /** Never forced: a CONSTANT, a function block's in-out, or a `raw` array element. */
         readOnly: z.boolean().optional(),
+        /**
+         * An array element of an enumeration, alias or subrange, stored without a
+         * forcing wrapper: watched, never forced (the runtime refuses it). Always
+         * with `readOnly`.
+         */
+        raw: z.boolean().optional(),
         /** A function block's VAR_IN_OUT: a view of the caller's variable. */
         inOut: z.boolean().optional(),
         /** The variable an in-out is bound to; forcing the in-out forces it. */

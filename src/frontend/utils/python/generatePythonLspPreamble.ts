@@ -25,6 +25,7 @@
  */
 import type { PLCDataType, PLCVariable } from '../../../middleware/shared/ports/types'
 import { getArrayTotalElements, isArrayVariable } from '../PLC/array-codegen-helpers'
+import { enumMemberValues } from '../PLC/enum-named-values'
 import { pythonInterfaceVariables } from './block-interface'
 
 export interface PythonLspPreamble {
@@ -207,7 +208,7 @@ function typeStubsFor(variables: PLCVariable[], dataTypes: readonly PLCDataType[
 
     if (dataType.derivation === 'enumerated') {
       lines.push(`class ${dataType.name}(IntEnum):`)
-      dataType.values.forEach((value, index) => lines.push(`    ${value.description} = ${index}`))
+      enumMemberValues(dataType).forEach((member, index) => lines.push(`    ${member.name} = ${member.value ?? index}`))
       return
     }
 

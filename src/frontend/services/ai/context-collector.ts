@@ -188,11 +188,24 @@ type GlobalLike = { name: string; type: { value: string } }
 type DataTypeLike = {
   name: string
   derivation: string
-  values?: { description: string }[]
+  values?: { description: string; value?: string }[]
   variable?: { name: string; type: { value: string } }[]
   dimensions?: { dimension: string }[]
-  baseType?: { value: string }
+  /** An array's element type, or the base type of a data type with named values. */
+  baseType?: { value: string } | string
 }
+
+/** An array's element type name. */
+const elementTypeOf = (dt: DataTypeLike): string | undefined =>
+  typeof dt.baseType === 'object' ? dt.baseType.value : undefined
+
+/** `A := 0, B`: an enumeration's members, with their values when they have them. */
+const enumMembersOf = (dt: DataTypeLike): string =>
+  (dt.values ?? []).map((v) => (v.value ? `${v.description} := ${v.value}` : v.description)).join(', ')
+
+/** The base type of a data type with named values, as a prefix: `USINT `. */
+const enumBaseOf = (dt: DataTypeLike): string =>
+  typeof dt.baseType === 'string' && dt.baseType !== '' ? `${dt.baseType} ` : ''
 
 export function formatPythonVariables(variables: VarLike[]): string {
   const sectionMap: Record<string, string> = {
@@ -253,14 +266,14 @@ function getFormatter(language: AICompletionLanguage): ContextFormatter {
       globals: (globals) => globals.map((v) => `# ${v.name}: ${v.type.value}`).join('\n'),
       dataType: (dt) => {
         if (dt.derivation === 'enumerated') {
-          return `# Enum ${dt.name}: ${dt.values?.map((v) => v.description).join(', ')}`
+          return `# Enum ${dt.name}: ${enumBaseOf(dt)}${enumMembersOf(dt)}`
         }
         if (dt.derivation === 'structure') {
           const fields = dt.variable?.map((v) => `${v.name}: ${v.type.value}`).join(', ')
           return `# Struct ${dt.name}: { ${fields} }`
         }
         if (dt.derivation === 'array') {
-          return `# Array ${dt.name}: ${dt.baseType?.value}[${dt.dimensions?.map((d) => d.dimension).join(', ')}]`
+          return `# Array ${dt.name}: ${elementTypeOf(dt)}[${dt.dimensions?.map((d) => d.dimension).join(', ')}]`
         }
         return ''
       },
@@ -274,14 +287,14 @@ function getFormatter(language: AICompletionLanguage): ContextFormatter {
       globals: (globals) => globals.map((v) => `// ${v.name}: ${v.type.value}`).join('\n'),
       dataType: (dt) => {
         if (dt.derivation === 'enumerated') {
-          return `// Enum ${dt.name}: ${dt.values?.map((v) => v.description).join(', ')}`
+          return `// Enum ${dt.name}: ${enumBaseOf(dt)}${enumMembersOf(dt)}`
         }
         if (dt.derivation === 'structure') {
           const fields = dt.variable?.map((v) => `${v.name}: ${v.type.value}`).join(', ')
           return `// Struct ${dt.name}: { ${fields} }`
         }
         if (dt.derivation === 'array') {
-          return `// Array ${dt.name}: ${dt.baseType?.value}[${dt.dimensions?.map((d) => d.dimension).join(', ')}]`
+          return `// Array ${dt.name}: ${elementTypeOf(dt)}[${dt.dimensions?.map((d) => d.dimension).join(', ')}]`
         }
         return ''
       },
@@ -298,14 +311,14 @@ function getFormatter(language: AICompletionLanguage): ContextFormatter {
     },
     dataType: (dt) => {
       if (dt.derivation === 'enumerated') {
-        return `TYPE ${dt.name} : (${dt.values?.map((v) => v.description).join(', ')}); END_TYPE`
+        return `TYPE ${dt.name} : ${enumBaseOf(dt)}(${enumMembersOf(dt)}); END_TYPE`
       }
       if (dt.derivation === 'structure') {
         const fields = dt.variable?.map((v) => `${v.name} : ${v.type.value}`).join('; ')
         return `TYPE ${dt.name} : STRUCT ${fields}; END_STRUCT; END_TYPE`
       }
       if (dt.derivation === 'array') {
-        return `TYPE ${dt.name} : ARRAY [${dt.dimensions?.map((d) => d.dimension).join(', ')}] OF ${dt.baseType?.value}; END_TYPE`
+        return `TYPE ${dt.name} : ARRAY [${dt.dimensions?.map((d) => d.dimension).join(', ')}] OF ${elementTypeOf(dt)}; END_TYPE`
       }
       return ''
     },

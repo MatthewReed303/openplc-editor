@@ -49,12 +49,12 @@ export const oldEditorParseDataTypesToXML = (xml: BaseXml, dataTypes: PLCDataTyp
           baseType: {
             enum: {
               values: {
-                value: dataType.values.map((value) => {
-                  return {
-                    '@name': value.description,
-                  }
-                }),
+                value: dataType.values.map((value) => ({
+                  '@name': value.description,
+                  ...(value.value ? { '@value': value.value } : {}),
+                })),
               },
+              ...(dataType.baseType ? { baseType: { [baseTypeTag(dataType.baseType)]: '' } } : {}),
             },
           },
           initialValue: dataType.initialValue

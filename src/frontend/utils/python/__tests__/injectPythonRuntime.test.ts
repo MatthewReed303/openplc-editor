@@ -220,6 +220,21 @@ describe('structures and enumerations', () => {
     expect(result).toContain('    RUNNING = 1')
   })
 
+  it('gives a named value its value in the IntEnum (IEC 61131-3 Ed.3 6.4.4.3)', () => {
+    const status: PLCDataType = {
+      name: 'Status',
+      derivation: 'enumerated',
+      baseType: 'USINT',
+      values: [{ description: 'IDLE', value: '0' }, { description: 'RUN' }, { description: 'FAULT', value: '9' }],
+    }
+    const result = run([userTyped('st', 'input', 'Status')], [status])
+
+    expect(result).toContain('class Status(IntEnum):')
+    expect(result).toContain('    IDLE = 0')
+    expect(result).toContain('    RUN = 1')
+    expect(result).toContain('    FAULT = 9')
+  })
+
   it('declares a nested structure before the one that constructs it', () => {
     const rig: PLCDataType = {
       name: 'Rig',

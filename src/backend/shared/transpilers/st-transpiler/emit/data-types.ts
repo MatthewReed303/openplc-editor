@@ -74,10 +74,13 @@ function generateDataType(state: DataTypeState, datatypeName: string): void {
       chunks.push([base.toUpperCase(), [tagname, 'base']])
     }
   } else if (dt.derivation === 'enumerated') {
+    // A data type with named values (IEC 61131-3 Ed.3 6.4.4.3): `USINT (A := 0, …)`.
+    if (dt.baseType !== undefined && dt.baseType !== '') chunks.push([`${dt.baseType.toUpperCase()} `, []])
     chunks.push(['(', []])
     dt.values.forEach((value, i) => {
       if (i > 0) chunks.push([', ', []])
       chunks.push([value.description, [tagname, 'value', i]])
+      if (value.value !== undefined && value.value !== '') chunks.push([` := ${value.value}`, []])
     })
     chunks.push([')', []])
   } else if (dt.derivation === 'array') {

@@ -45,8 +45,17 @@ export interface ResolvedVariable extends DebugLeafInfo {
   name: string
   /** Packed (arr << 16 | elem) — the flat index the transports carry. */
   index: number
-  /** Never forced or written: an IEC CONSTANT, or a function-block in-out. */
+  /**
+   * Never forced (nor written: the CLI has no write verb): an IEC CONSTANT, a
+   * function-block in-out, or a `raw` array element.
+   */
   readOnly?: true
+  /**
+   * Stored without a forcing wrapper: an element of a POU's own
+   * `ARRAY OF <enumeration | alias | subrange>`. Watched, never forced — the
+   * runtime refuses the force (LEAF_FLAG_RAW). Always `readOnly` too.
+   */
+  raw?: true
   /**
    * A function block's VAR_IN_OUT: a live view of the caller's variable, which
    * each call binds (IEC 61131-3 §3.48). Forcing it forces `target`, the
@@ -150,12 +159,13 @@ export function indexDebugMap(store: OpenPLCStore, map: DebugMap): DebugVariable
   )
   const nameToIndex = deriveVariableIndexMap(treeMap, map)
 
-  // Read-only and in-out leaves, by packed address (see debug-parser.ts).
-  const access = new Map<number, Pick<ResolvedVariable, 'readOnly' | 'inOut' | 'target'>>()
+  // Read-only, in-out and raw leaves, by packed address (see debug-parser.ts).
+  const access = new Map<number, Pick<ResolvedVariable, 'readOnly' | 'raw' | 'inOut' | 'target'>>()
   for (const leaf of map.leaves) {
-    if (!leaf.readOnly && !leaf.indirect) continue
+    if (!leaf.readOnly && !leaf.indirect && !leaf.raw) continue
     access.set(packDebugAddr(leaf), {
       readOnly: true,
+      ...(leaf.raw ? { raw: true as const } : {}),
       ...(leaf.indirect ? { inOut: true as const } : {}),
       ...(leaf.target !== undefined ? { target: leaf.target } : {}),
     })

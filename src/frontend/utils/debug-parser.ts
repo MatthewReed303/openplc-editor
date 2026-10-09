@@ -31,6 +31,13 @@ export interface DebugMapLeaf {
   indirect?: true
   /** For an `indirect` leaf, the path of the variable it shows, when known. */
   target?: string
+  /**
+   * A leaf stored without a forcing wrapper: an element of a POU's own
+   * `ARRAY OF <enumeration | alias | subrange>`. Read and written in place,
+   * never forced — the runtime refuses a force (LEAF_FLAG_RAW). Not
+   * `readOnly`, since a write succeeds. See `inout-force.ts`.
+   */
+  raw?: true
 }
 
 export interface DebugMap {

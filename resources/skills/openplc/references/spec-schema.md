@@ -207,6 +207,24 @@ Three shapes, discriminated by `derivation`:
   "dimensions": ["0..9"] }
 ```
 
+An enumerated type may also be a **data type with named values** (IEC 61131-3
+Ed.3 6.4.4.3): give it an integer `baseType` (`SINT`, `INT`, `DINT`, `LINT`,
+`USINT`, `UINT`, `UDINT`, `ULINT`, `BYTE`, `WORD`, `DWORD`, `LWORD`) and a
+value to any name as `{ "name", "value" }`. A name without a value is one more
+than the name before it (the first is 0).
+
+```json
+{ "name": "Status", "derivation": "enumerated", "baseType": "USINT",
+  "values": [ { "name": "IDLE", "value": 0 }, "RUN", { "name": "FAULT", "value": "16#20" } ],
+  "initialValue": "IDLE" }
+```
+
+It is stored in the base type's width (`USINT` is one byte), and its values are
+numbers of that type: `x := 27`, `x := RUN + 1`, `n := x` into an INT and
+`x >= RUN` all compile. A plain enumeration (no `baseType`) is stored as INT
+and is compared only with its own values; `apply` refuses a value outside the
+base type's range, two names with one value, and a non-integer base type.
+
 ## tasks[] and instances[]
 
 ```json

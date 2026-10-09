@@ -34,9 +34,24 @@ export function parseDataTypesXml(dataTypeXml: unknown): PLCDataType[] {
     }
 
     if ('enum' in baseType) {
-      const valuesXml = asRecord(asRecord(baseType.enum).values)
-      const values = asArray(valuesXml.value).map((v) => ({ description: asString(asRecord(v)['@name']) }))
-      return { name, derivation: 'enumerated', initialValue: parseSimpleInitialValue(entry.initialValue), values }
+      const enumXml = asRecord(baseType.enum)
+      const valuesXml = asRecord(enumXml.values)
+      const values = asArray(valuesXml.value).map((v) => {
+        const value = asRecord(v)['@value']
+        return {
+          description: asString(asRecord(v)['@name']),
+          ...(typeof value === 'string' && value !== '' ? { value } : {}),
+        }
+      })
+      // A data type with named values (IEC 61131-3 Ed.3 6.4.4.3) names its base.
+      const enumBase = 'baseType' in enumXml ? parseBaseTypeLeaf(enumXml.baseType).value : undefined
+      return {
+        name,
+        derivation: 'enumerated',
+        ...(enumBase ? { baseType: enumBase } : {}),
+        initialValue: parseSimpleInitialValue(entry.initialValue),
+        values,
+      }
     }
 
     if ('array' in baseType) {

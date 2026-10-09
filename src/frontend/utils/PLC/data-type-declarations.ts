@@ -70,8 +70,8 @@ function trailingDocumentation(source: string, starts: number[], span: StrucppSp
   return comment ? source.slice(comment.inner.start, comment.inner.end).trim() : ''
 }
 
-/** `TYPE Name : (); END_TYPE` — an enumeration the user has not filled in yet. */
-const EMPTY_ENUM_REGEX = /^\s*TYPE\s+([A-Za-z_]\w*)\s*:\s*\(\s*\)\s*;\s*END_TYPE\s*$/i
+/** `TYPE Name : (); END_TYPE` (or `: USINT ()`) — an enumeration the user has not filled in yet. */
+const EMPTY_ENUM_REGEX = /^\s*TYPE\s+([A-Za-z_]\w*)\s*:\s*(?:([A-Za-z_]\w*)\s*)?\(\s*\)\s*;\s*END_TYPE\s*$/i
 
 const isRecord = (value: unknown): value is StrucppNode =>
   typeof value === 'object' && value !== null && !Array.isArray(value) && 'kind' in value
@@ -147,22 +147,44 @@ function buildStructure(source: string, starts: number[], name: string, definiti
   return { dataType: { name, derivation: 'structure', variable } }
 }
 
-function buildEnum(source: string, starts: number[], name: string, definition: StrucppNode): ParseDataTypeResult {
+function buildEnum(
+  source: string,
+  starts: number[],
+  name: string,
+  definition: StrucppNode,
+  defaultValue: unknown,
+): ParseDataTypeResult {
   const members = Array.isArray(definition.members) ? definition.members : []
-  const values = members.filter(isRecord).map((member) => ({
-    description: sliceSpan(source, starts, member.sourceSpan).trim(),
-  }))
+  // A member's span covers `NAME := value`; the name is the text before `:=`,
+  // and the value is read through its own span so `16#1F` keeps its spelling.
+  const values = members.filter(isRecord).map((member) => {
+    const text = sliceSpan(source, starts, member.sourceSpan).trim()
+    const value = isRecord(member.value) ? sliceSpan(source, starts, member.value.sourceSpan).trim() : ''
+    const description = value !== '' ? text.split(':=')[0].trim() : text
+    return value !== '' ? { description, value } : { description }
+  })
+
+  // IEC 61131-3 Ed.3 6.4.4.3: `T : USINT (A := 0, ...)`, a data type with named values.
+  const baseType = isRecord(definition.baseType) ? sliceSpan(source, starts, definition.baseType.sourceSpan).trim() : ''
 
   // `defaultValue` is the folded name, so match it back to the member the user
   // wrote and take that spelling. Otherwise an enum defaulting to `Running`
-  // comes back as `RUNNING` and is written that way on the next save.
-  const initial = typeof definition.defaultValue === 'string' ? definition.defaultValue : ''
+  // comes back as `RUNNING` and is written that way on the next save. With a
+  // base type the parser leaves it on the declaration instead, as source text,
+  // and it may be a number (6.4.4.3.2).
+  const initial =
+    typeof definition.defaultValue === 'string'
+      ? definition.defaultValue
+      : isRecord(defaultValue)
+        ? sliceSpan(source, starts, defaultValue.sourceSpan).trim()
+        : ''
   const spelled = values.find((value) => value.description.toUpperCase() === initial.toUpperCase())
 
   return {
     dataType: {
       name,
       derivation: 'enumerated',
+      ...(baseType !== '' ? { baseType } : {}),
       values,
       initialValue: spelled?.description ?? initial,
     },
@@ -240,7 +262,13 @@ export function parseDataTypeFromText(content: string, expectedName?: string): P
         }
       }
       return {
-        dataType: { name: expectedName ?? empty[1], derivation: 'enumerated', values: [], initialValue: '' },
+        dataType: {
+          name: expectedName ?? empty[1],
+          derivation: 'enumerated',
+          ...(empty[2] !== undefined ? { baseType: empty[2] } : {}),
+          values: [],
+          initialValue: '',
+        },
       }
     }
     return { error: errors[0].message }
@@ -262,7 +290,7 @@ export function parseDataTypeFromText(content: string, expectedName?: string): P
       result = buildStructure(content, starts, name, definition)
       break
     case 'EnumDefinition':
-      result = buildEnum(content, starts, name, definition)
+      result = buildEnum(content, starts, name, definition, declaration.defaultValue)
       break
     case 'ArrayDefinition':
       result = buildArray(content, starts, name, definition, declaration.defaultValue)

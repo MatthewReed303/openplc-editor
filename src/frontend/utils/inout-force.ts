@@ -2,7 +2,7 @@
  * What the debugger may do with a leaf: read it, force it, or force something
  * else in its place.
  *
- * STruC++ marks two kinds of leaf in debug-map.json:
+ * STruC++ marks three kinds of leaf in debug-map.json:
  *
  *  - `readOnly` — an IEC CONSTANT. Watched, never forced or written; the
  *    runtime refuses either (LEAF_FLAG_READONLY).
@@ -13,6 +13,11 @@
  *    and forcing the in-out forces that variable — at its own name, where the
  *    runtime keeps the force. Without a target the in-out cannot be forced at
  *    all: the variable it shows is whatever the last call passed.
+ *  - `raw` — an element of a POU's own `ARRAY OF <enumeration | alias |
+ *    subrange>`, which C++ stores bare, without the forcing wrapper. Watched,
+ *    never forced: the runtime refuses the force (LEAF_FLAG_RAW). The runtime
+ *    does accept a write, but the debugger has no write path (protocol.ts: the
+ *    only mutation it sends is a force), so here it is treated like `readOnly`.
  *
  * Built once per debug session from the map (`registerDebugLeafAccess`), and
  * read synchronously by the force paths and the menus. A plain module-level
@@ -23,8 +28,10 @@
 import { buildLeafPathMap, type DebugMap } from './debug-parser'
 
 export interface DebugLeafAccess {
-  /** The leaf itself is never forced or written. */
+  /** The leaf itself is never forced (nor written, by this debugger). */
   readOnly: boolean
+  /** Stored without a forcing wrapper (`raw` in the map): watched, never forced. */
+  raw: boolean
   /** A view of a function block in-out's bound variable. */
   indirect: boolean
   /** The variable an `indirect` leaf shows, by debug path, when known. */
@@ -38,7 +45,7 @@ export interface DebugLeafAccess {
 let byIndex = new Map<number, DebugLeafAccess>()
 
 /**
- * Index the read-only and in-out leaves of a session's debug map. `keys` is the
+ * Index the read-only, in-out and raw leaves of a session's debug map. `keys` is the
  * session's composite-key → packed-index map (`deriveVariableIndexMap`), used
  * to name an in-out's target the way the watch panel names it.
  */
@@ -48,12 +55,13 @@ export function registerDebugLeafAccess(map: DebugMap, keys?: Map<string, number
   for (const [key, index] of keys ?? []) if (!keyOfIndex.has(index)) keyOfIndex.set(index, key)
   const next = new Map<number, DebugLeafAccess>()
   for (const leaf of map.leaves) {
-    if (!leaf.readOnly && !leaf.indirect) continue
+    if (!leaf.readOnly && !leaf.indirect && !leaf.raw) continue
     const index = paths.get(leaf.path.toUpperCase())
     if (index === undefined) continue
     const targetIndex = leaf.target !== undefined ? paths.get(leaf.target.toUpperCase()) : undefined
     next.set(index, {
       readOnly: true,
+      raw: leaf.raw === true,
       indirect: leaf.indirect === true,
       ...(leaf.target !== undefined ? { target: leaf.target } : {}),
       ...(targetIndex !== undefined ? { targetIndex } : {}),
@@ -76,14 +84,17 @@ export function getDebugLeafAccess(index: number | undefined): DebugLeafAccess |
 /**
  * The index a force (or a release) of `index` goes to: the index itself for an
  * ordinary leaf, the bound variable's for an in-out with a known target, and
- * undefined when the leaf cannot be forced (a CONSTANT, or an in-out whose
- * variable cannot be named).
+ * undefined when the leaf cannot be forced (a CONSTANT, a raw array element,
+ * or an in-out whose variable cannot be named).
  */
 export function resolveForceIndex(index: number | undefined): number | undefined {
   if (index === undefined) return undefined
   const access = byIndex.get(index)
   if (!access) return index
-  if (access.indirect && access.targetIndex !== undefined) return access.targetIndex
+  // An in-out bound to a raw element forwards to a leaf that refuses the force.
+  if (access.indirect && access.targetIndex !== undefined && byIndex.get(access.targetIndex)?.raw !== true) {
+    return access.targetIndex
+  }
   return undefined
 }
 
@@ -108,7 +119,20 @@ export function describeInOutLeaf(index: number | undefined): string | undefined
   const access = getDebugLeafAccess(index)
   if (!access?.indirect) return undefined
   const target = access.targetKey ?? access.target
+  if (target !== undefined && resolveForceIndex(index) === undefined && access.targetIndex !== undefined) {
+    return `In-out: shows ${target}, an array element that cannot be forced.`
+  }
   return target !== undefined
     ? `In-out: shows ${target}. Forcing it forces ${target}.`
     : 'In-out: shows the variable passed to it (read-only). Force that variable.'
+}
+
+/**
+ * One line for a menu or a tooltip explaining why a raw leaf (an element C++
+ * stores without a forcing wrapper) offers no force; undefined otherwise.
+ */
+export function describeRawLeaf(index: number | undefined): string | undefined {
+  const access = getDebugLeafAccess(index)
+  if (!access?.raw || access.indirect) return undefined
+  return 'Array element of an enumeration, alias or subrange: watched only, it cannot be forced.'
 }

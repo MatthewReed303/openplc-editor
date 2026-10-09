@@ -106,7 +106,9 @@ export type TranspileDataType =
   | {
       name: string
       derivation: 'enumerated'
-      values: { description: string }[]
+      /** Base type of a data type with named values (IEC 61131-3 Ed.3 6.4.4.3). */
+      baseType?: string
+      values: { description: string; value?: string }[]
       initialValue?: string
     }
   | {

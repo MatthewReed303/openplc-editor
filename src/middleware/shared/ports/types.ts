@@ -86,8 +86,15 @@ export type PLCDataType =
   | {
       name: string
       derivation: 'enumerated'
+      /**
+       * Base type of a data type with named values (IEC 61131-3 Ed.3 6.4.4.3),
+       * e.g. `USINT`; absent for an enumeration (6.4.4.2), as in every project
+       * written before named values existed.
+       */
+      baseType?: string
       initialValue?: string
-      values: Array<{ description: string }>
+      /** `value` is a member's explicit value (an integer literal), when it has one. */
+      values: Array<{ description: string; value?: string }>
     }
   | {
       name: string
@@ -1202,6 +1209,11 @@ export interface DebugTreeNode {
   arrayIndices?: number[]
   /** Member names of an enumerated type, indexed by the underlying integer value; the wire still carries an INT. */
   enumValues?: string[]
+  /**
+   * The value of each of `enumValues`, same order, for a data type with named
+   * values (IEC 61131-3 Ed.3 6.4.4.3); absent when a member's value is its position.
+   */
+  enumCodes?: number[]
 }
 
 /** Union type representing logs from either v3 (string) or v4 (array) runtime */

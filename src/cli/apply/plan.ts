@@ -20,6 +20,7 @@
 import type { OpenPLCStore } from '@root/frontend/store'
 import { elementNameCollision } from '@root/frontend/store/slices/shared/name-collision'
 import { isLegalIdentifier } from '@root/frontend/utils/keywords'
+import { normalizeEnumBaseType, validateEnumeratedDataType } from '@root/frontend/utils/PLC/enum-named-values'
 import { baseTypeEnum } from '@root/middleware/shared/ports/plc-schemas'
 import type { PLCDataType, PLCVariable } from '@root/middleware/shared/ports/types'
 import { RTOS_SETTINGS_SECTION } from '@root/middleware/shared/utils/rtos'
@@ -63,7 +64,8 @@ const TEXTUAL = new Set(['st', 'il', 'python', 'cpp'])
  * `projectPath` is needed only by the EtherCAT section, which reads the
  * project's own ESI repository off disk — which is also why this is async.
  */
-export async function applySpec(store: OpenPLCStore, 
+export async function applySpec(
+  store: OpenPLCStore,
   spec: ApplySpec,
   options: { prune: boolean; projectPath: string },
 ): Promise<ApplyOutcome> {
@@ -198,7 +200,12 @@ function applyLibraries(store: OpenPLCStore, spec: ApplySpec, changes: PlannedCh
   }
 }
 
-function applyGlobalVariableLists(store: OpenPLCStore, spec: ApplySpec, changes: PlannedChange[], errors: string[]): void {
+function applyGlobalVariableLists(
+  store: OpenPLCStore,
+  spec: ApplySpec,
+  changes: PlannedChange[],
+  errors: string[],
+): void {
   for (const wanted of spec.globalVariableLists ?? []) {
     const state: StoreState = store.getState()
     const existing = (state.project.data.globalVariableLists ?? []).some((list) => list.name === wanted.name)
@@ -232,8 +239,13 @@ function toDataType(spec: SpecDataType): PLCDataType {
     return {
       name: spec.name,
       derivation: 'enumerated',
+      ...(spec.baseType ? { baseType: normalizeEnumBaseType(spec.baseType) ?? spec.baseType } : {}),
       initialValue: spec.initialValue ?? '',
-      values: spec.values.map((description) => ({ description })),
+      values: spec.values.map((entry) =>
+        typeof entry === 'string'
+          ? { description: entry }
+          : { description: entry.name, ...(entry.value !== undefined ? { value: String(entry.value) } : {}) },
+      ),
     } as PLCDataType
   }
   if (spec.derivation === 'structure') {
@@ -280,7 +292,14 @@ function checkDataTypeNames(wanted: SpecDataType): string[] {
 
   check(wanted.name, 'the name')
   if (wanted.derivation === 'structure') for (const member of wanted.variables) check(member.name, 'field')
-  if (wanted.derivation === 'enumerated') for (const value of wanted.values) check(value, 'value')
+  if (wanted.derivation === 'enumerated') {
+    for (const value of wanted.values) check(typeof value === 'string' ? value : value.name, 'value')
+    // Base type, values in range and distinct, initial value: the table's rules.
+    const data = toDataType(wanted)
+    if (data.derivation === 'enumerated') {
+      for (const problem of validateEnumeratedDataType(data)) problems.push(`data type "${wanted.name}": ${problem}.`)
+    }
+  }
   return problems
 }
 
@@ -669,7 +688,11 @@ function applyGlobalVariables(store: OpenPLCStore, spec: ApplySpec, changes: Pla
     const existing = globals.findIndex((entry) => entry.name.toUpperCase() === wanted.name.toUpperCase())
 
     if (existing >= 0) {
-      state.projectActions.updateVariable({ scope: 'global', rowId: existing, data: toVariableUpdate(wanted, 'global') })
+      state.projectActions.updateVariable({
+        scope: 'global',
+        rowId: existing,
+        data: toVariableUpdate(wanted, 'global'),
+      })
       changes.push({ kind: 'variable', action: 'update', name: wanted.name })
       continue
     }
@@ -691,7 +714,8 @@ function applyGlobalVariables(store: OpenPLCStore, spec: ApplySpec, changes: Pla
  * later references `Motor` would then be referencing a variable that does not
  * exist, so the rename is surfaced rather than swallowed.
  */
-function namedChange(store: OpenPLCStore, 
+function namedChange(
+  store: OpenPLCStore,
   response: { data?: unknown },
   pouName: string | null,
   asked: string,
@@ -868,9 +892,7 @@ function pruneVariables(store: OpenPLCStore, spec: ApplySpec, changes: PlannedCh
       // Not forced: a global a POU still declares VAR_EXTERNAL would otherwise
       // be cascade-deleted out of that POU's interface, which the spec did not
       // ask for. Report the conflict and leave both in place.
-      const response = store
-        .getState()
-        .projectActions.deleteVariable({ scope: 'global', variableName: variable.name })
+      const response = store.getState().projectActions.deleteVariable({ scope: 'global', variableName: variable.name })
       if (!response.ok) {
         const referencing = (response.data as { referencingPous?: string[] } | undefined)?.referencingPous ?? []
         errors.push(
@@ -885,9 +907,7 @@ function pruneVariables(store: OpenPLCStore, spec: ApplySpec, changes: PlannedCh
 
   for (const list of spec.globalVariableLists ?? []) {
     const wanted = new Set(list.variables.map((variable) => variable.name.toLowerCase()))
-    const current = store
-      .getState()
-      .project.data.globalVariableLists?.find((entry) => entry.name === list.name)
+    const current = store.getState().project.data.globalVariableLists?.find((entry) => entry.name === list.name)
     for (const variable of [...(current?.variables ?? [])]) {
       if (wanted.has(variable.name.toLowerCase())) continue
       store

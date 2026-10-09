@@ -232,6 +232,72 @@ END_PROGRAM`),
 END_PROGRAM`),
     ).toEqual([])
   })
+
+  describe('one variable taking the results of several function calls', () => {
+    // A function called for what it does to its in-out arguments: the result is
+    // dropped into a scratch variable, so the scratch variable is written by
+    // every call. Each call does work; none is lost.
+    const step = (name: string, inOut: 'inOut' | 'output' | 'input'): PLCPou =>
+      ({
+        name,
+        pouType: 'function',
+        interface: {
+          variables: [
+            { name: 'Cmd', class: 'input', type: { definition: 'base-type', value: 'BOOL' } },
+            { name: 'Data', class: inOut, type: { definition: 'base-type', value: 'INT' } },
+          ],
+        },
+      }) as unknown as PLCPou
+    const body = `PROGRAM Main
+  VAR holdOff : TON; END_VAR
+  holdOff(IN := Run, PT := HoldTime);
+  Settled := holdOff.Q;
+  x := RESET_STEP(Cmd := Run,
+                  Data := Data);
+  x := CORE_STEP(Cmd := Run, Data := Data);
+END_PROGRAM`
+
+    it('does NOT report it when the functions write in-out arguments', () => {
+      expect(rules(body, [timerPou, step('RESET_STEP', 'inOut'), step('CORE_STEP', 'inOut')])).toEqual([])
+    })
+
+    it('does NOT report it when a library function writes an output', () => {
+      const library = {
+        name: 'lib',
+        version: '1.0.0',
+        pous: [
+          {
+            name: 'RESET_STEP',
+            type: 'function',
+            variables: [{ name: 'Data', class: 'output', type: { definition: 'base-type', value: 'INT' } }],
+          },
+        ],
+      } as unknown as SystemLibrary
+      const findings = lintProgram({
+        st: body,
+        pous: [timerPou, step('CORE_STEP', 'inOut')],
+        systemLibraries: [TON, library],
+        globals: [],
+      })
+      expect(findings.map((finding) => finding.rule)).toEqual([])
+    })
+
+    it('still reports it when the functions only return a value', () => {
+      expect(rules(body, [timerPou, step('RESET_STEP', 'input'), step('CORE_STEP', 'input')])).toContain(
+        'variable-driven-twice',
+      )
+    })
+
+    it('still reports two plain writes next to such a call', () => {
+      expect(
+        rules(body.replace('END_PROGRAM', '  y := 1;\n  y := 2;\nEND_PROGRAM'), [
+          timerPou,
+          step('RESET_STEP', 'inOut'),
+          step('CORE_STEP', 'inOut'),
+        ]),
+      ).toContain('variable-driven-twice')
+    })
+  })
 })
 
 describe('reaching the outside world', () => {

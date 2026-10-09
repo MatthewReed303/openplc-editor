@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals'
 
 import type { PLCPou, PLCProjectData, PLCVariable } from '../../../../middleware/shared/ports/types'
+import { generateDataTypes } from '../st-transpiler/emit/data-types'
 import { fromPortShape } from '../transpile-from-port'
 
 function variable(overrides: Partial<PLCVariable> & { name: string }): PLCVariable {
@@ -310,6 +311,35 @@ describe('projecting the store shape into the transpiler IR', () => {
     })
 
     expect(ir.pous.map((p) => p.body.language)).toEqual(['st', 'il', 'ld', 'fbd', 'st'])
+  })
+
+  it('carries a data type with named values to the TYPE block (IEC 61131-3 Ed.3 6.4.4.3)', () => {
+    const ir = fromPortShape({
+      dataTypes: [
+        {
+          name: 'Status',
+          derivation: 'enumerated',
+          baseType: 'usint',
+          initialValue: 'RUN',
+          values: [{ description: 'IDLE', value: '0' }, { description: 'RUN' }, { description: 'FAULT', value: '9' }],
+        },
+        { name: 'Mode', derivation: 'enumerated', values: [{ description: 'AUTO' }, { description: 'HAND' }] },
+      ],
+      pous: [],
+      configurations: EMPTY_RESOURCE,
+    })
+    expect(ir.dataTypes[0]).toEqual({
+      name: 'Status',
+      derivation: 'enumerated',
+      baseType: 'usint',
+      values: [{ description: 'IDLE', value: '0' }, { description: 'RUN' }, { description: 'FAULT', value: '9' }],
+      initialValue: 'RUN',
+    })
+    const text = generateDataTypes(ir)
+      .map(([chunk]) => chunk)
+      .join('')
+    expect(text).toContain('  Status : USINT (IDLE := 0, RUN, FAULT := 9) := RUN;\n')
+    expect(text).toContain('  Mode : (AUTO, HAND);\n')
   })
 
   it('projects data types into the scalar shapes the schema side uses', () => {

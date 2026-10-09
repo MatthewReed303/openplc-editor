@@ -316,17 +316,27 @@ export function parseValueByTypeName(
  * For enum-typed leaves, pass `enumValues`. The function matches the
  * input against member names (case-insensitive) first, falls back to
  * integer parsing so power users can still type a number, and emits
- * the underlying INT bytes either way.
+ * the underlying INT bytes either way. For a data type with named values,
+ * pass `enumCodes` too: a name is sent as its value rather than its position.
  */
-export function encodeForceValue(input: string, typeName: string, enumValues?: string[]): Uint8Array {
+export function encodeForceValue(
+  input: string,
+  typeName: string,
+  enumValues?: string[],
+  enumCodes?: number[],
+): Uint8Array {
   const trimmed = input.trim()
 
-  // Enum: name → index, with numeric fallback.
+  // Enum: name → index (or its named value), with numeric fallback.
   let numericInput = trimmed
   if (enumValues && enumValues.length > 0) {
     const idx = enumValues.findIndex((name) => name.toLowerCase() === trimmed.toLowerCase())
     if (idx >= 0) {
-      numericInput = String(idx)
+      const code = enumCodes !== undefined ? enumCodes[idx] : idx
+      if (code === undefined || !Number.isFinite(code)) {
+        throw new Error(`The value of "${trimmed}" is not a number this editor can read; force it as a number.`)
+      }
+      numericInput = String(code)
     } else if (!/^-?\d+$/.test(trimmed)) {
       throw new Error(`Unknown enum member: "${trimmed}". Expected one of: ${enumValues.join(', ')}`)
     }

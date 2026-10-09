@@ -112,6 +112,7 @@ const VariablesPanel = ({
     lookupKey: string
     variableType: string
     enumValues?: string[]
+    enumCodes?: number[]
     position: { x: number; y: number }
   } | null>(null)
   const [forceValueModalOpen, setForceValueModalOpen] = useState<boolean>(false)
@@ -121,6 +122,7 @@ const VariablesPanel = ({
     lookupKey: string
     variableType: string
     enumValues?: string[]
+    enumCodes?: number[]
   } | null>(null)
 
   const getValue = (compositeKey: string): string | undefined => {
@@ -176,8 +178,9 @@ const VariablesPanel = ({
   const canForceVariable = useCallback(
     (node: DebugTreeNode) => {
       if (!isDebuggerVisible || node.isComplex) return false
-      // A CONSTANT, or a function-block in-out whose variable cannot be named,
-      // is watched but never forced (inout-force.ts).
+      // A CONSTANT, an array element stored without a forcing wrapper (`raw`),
+      // or a function-block in-out whose variable cannot be named, is watched
+      // but never forced (inout-force.ts).
       const leafIndex =
         node.debugIndex ?? debugVariableIndexes?.get(node.fullPath) ?? debugVariableIndexes?.get(node.compositeKey)
       if (!canForceDebugLeaf(leafIndex)) return false
@@ -201,6 +204,7 @@ const VariablesPanel = ({
         lookupKey,
         variableType: node.type,
         enumValues: node.enumValues,
+        enumCodes: node.enumCodes,
         position,
       })
     },
@@ -263,6 +267,7 @@ const VariablesPanel = ({
           lookupKey: contextMenuState.lookupKey,
           variableType: contextMenuState.variableType,
           enumValues: contextMenuState.enumValues,
+          enumCodes: contextMenuState.enumCodes,
         })
       }
       handleCloseContextMenu()
@@ -287,7 +292,12 @@ const VariablesPanel = ({
 
     let valueBuffer: Uint8Array
     try {
-      valueBuffer = encodeForceValue(forceValue, variableType, pendingForceContext.enumValues)
+      valueBuffer = encodeForceValue(
+        forceValue,
+        variableType,
+        pendingForceContext.enumValues,
+        pendingForceContext.enumCodes,
+      )
     } catch (error) {
       toast({
         title: 'Cannot force value',

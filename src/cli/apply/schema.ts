@@ -214,7 +214,25 @@ const dataTypeSchema = z.discriminatedUnion('derivation', [
     .object({
       derivation: z.literal('enumerated'),
       name: z.string().min(1),
-      values: z.array(z.string().min(1)).min(1),
+      /**
+       * A data type with named values (IEC 61131-3 Ed.3 6.4.4.3): its integer
+       * base type, e.g. `USINT`. Omitted for a plain enumeration.
+       */
+      baseType: z.string().min(1).optional(),
+      /** A name, or `{ name, value }` for a named value with an explicit value. */
+      values: z
+        .array(
+          z.union([
+            z.string().min(1),
+            z
+              .object({
+                name: z.string().min(1),
+                value: z.union([z.string().min(1), z.number().int()]).optional(),
+              })
+              .strict(),
+          ]),
+        )
+        .min(1),
       initialValue: z.string().optional(),
     })
     .strict(),

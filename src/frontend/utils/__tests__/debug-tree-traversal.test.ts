@@ -2,7 +2,13 @@ import type { PLCDataType, PLCPou, PLCVariable } from '../../../middleware/share
 import { createTestStore } from '../../store/testing'
 import type { DebugVariableEntry } from '../debug-parser'
 import type { DebugNodeVisitor, TraversalContext } from '../debug-tree-traversal'
-import { lookupEnumValues, resolveLeafType, traverseNestedType, traverseVariable } from '../debug-tree-traversal'
+import {
+  lookupEnumCodes,
+  lookupEnumValues,
+  resolveLeafType,
+  traverseNestedType,
+  traverseVariable,
+} from '../debug-tree-traversal'
 
 /** System libraries pre-loaded into the store by `jest-vi-shim.ts`. */
 const SYSTEM_LIBS = createTestStore().getState().libraries.system
@@ -783,5 +789,24 @@ describe('lookupEnumValues', () => {
   it('returns an empty array when an enum has no members (degenerate but valid)', () => {
     const empty: PLCDataType = { name: 'Empty', derivation: 'enumerated', values: [] }
     expect(lookupEnumValues('Empty', [empty])).toEqual([])
+  })
+})
+
+describe('lookupEnumCodes', () => {
+  it('gives each member its value for a data type with named values (IEC 61131-3 Ed.3 6.4.4.3)', () => {
+    const status: PLCDataType = {
+      name: 'Status',
+      derivation: 'enumerated',
+      baseType: 'USINT',
+      values: [{ description: 'IDLE', value: '0' }, { description: 'RUN' }, { description: 'FAULT', value: '16#10' }],
+    }
+    expect(lookupEnumValues('status', [status])).toEqual(['IDLE', 'RUN', 'FAULT'])
+    expect(lookupEnumCodes('status', [status])).toEqual([0, 1, 16])
+  })
+
+  it('is undefined for an enumeration, whose members are numbered by position', () => {
+    const plain: PLCDataType = { name: 'Mode', derivation: 'enumerated', values: [{ description: 'A' }] }
+    expect(lookupEnumCodes('Mode', [plain])).toBeUndefined()
+    expect(lookupEnumCodes('Unknown', [plain])).toBeUndefined()
   })
 })

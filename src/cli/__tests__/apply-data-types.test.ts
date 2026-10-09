@@ -13,7 +13,8 @@ import { createTestStore } from '@root/frontend/store/testing'
 jest.mock('../apply/fbd', () => ({ applyFbdBody: () => [] }))
 
 import { applySpec } from '../apply/plan'
-import type { ApplySpec } from '../apply/schema'
+import { type ApplySpec, parseApplySpec } from '../apply/schema'
+import { describeDataType } from '../describe/data-types'
 
 // One store for the file, as the process singleton was.
 const store = createTestStore()
@@ -97,5 +98,93 @@ describe('a data type whose name is not a legal identifier', () => {
 
     expect(result.errors).toEqual([])
     expect(dataTypesIn().some((type) => type.name === 'GoodOne')).toBe(true)
+  })
+})
+
+describe('a data type with named values (IEC 61131-3 Ed.3 6.4.4.3)', () => {
+  // `T : USINT (A := 0, ...)`: a base type, and a value for each name. The spec
+  // carries both, and `describe` gives back the spec `apply` took.
+  const spec = {
+    derivation: 'enumerated',
+    name: 'UT_STATUS',
+    baseType: 'usint',
+    values: [{ name: 'UT_ST_IDLE', value: 0 }, 'UT_ST_RUN', { name: 'UT_ST_FAULT', value: '16#20' }],
+    initialValue: 'UT_ST_IDLE',
+  }
+
+  it('is a valid spec, values given as names or as { name, value }', () => {
+    expect(parseApplySpec({ specVersion: 1, dataTypes: [spec] }).ok).toBe(true)
+    expect(parseApplySpec({ specVersion: 1, dataTypes: [{ ...spec, values: [{ name: 'A', valu: 1 }] }] }).ok).toBe(
+      false,
+    )
+  })
+
+  it('is stored with its base type and values, and described back as the spec', async () => {
+    const result = await apply([spec])
+    expect(result.errors).toEqual([])
+
+    const stored = dataTypesIn().find((type) => type.name === 'UT_STATUS')
+    expect(stored).toEqual({
+      name: 'UT_STATUS',
+      derivation: 'enumerated',
+      baseType: 'USINT',
+      initialValue: 'UT_ST_IDLE',
+      values: [
+        { description: 'UT_ST_IDLE', value: '0' },
+        { description: 'UT_ST_RUN' },
+        { description: 'UT_ST_FAULT', value: '16#20' },
+      ],
+    })
+    const described = describeDataType(stored!)
+    expect(described).toEqual({
+      name: 'UT_STATUS',
+      derivation: 'enumerated',
+      baseType: 'USINT',
+      values: [{ name: 'UT_ST_IDLE', value: '0' }, 'UT_ST_RUN', { name: 'UT_ST_FAULT', value: '16#20' }],
+      initialValue: 'UT_ST_IDLE',
+    })
+
+    // Applying what describe produced changes nothing.
+    expect((await apply([described])).errors).toEqual([])
+    expect(dataTypesIn().find((type) => type.name === 'UT_STATUS')).toEqual(stored)
+  })
+
+  it('leaves a plain enumeration exactly as before', async () => {
+    expect((await apply([{ derivation: 'enumerated', name: 'Plain', values: ['A', 'B'] }])).errors).toEqual([])
+    const stored = dataTypesIn().find((type) => type.name === 'Plain')
+    expect(stored).toEqual({
+      name: 'Plain',
+      derivation: 'enumerated',
+      initialValue: '',
+      values: [{ description: 'A' }, { description: 'B' }],
+    })
+    expect(describeDataType(stored!)).toEqual({ name: 'Plain', derivation: 'enumerated', values: ['A', 'B'] })
+  })
+
+  it('refuses a value out of the base range, two names with one value, and a base that is not an integer', async () => {
+    const outOfRange = await apply([
+      { ...spec, name: 'Wide', values: [{ name: 'A', value: 256 }], initialValue: undefined },
+    ])
+    expect(outOfRange.errors).toEqual(['data type "Wide": "A" = 256 is out of range for USINT (0..255).'])
+
+    const twice = await apply([
+      {
+        ...spec,
+        name: 'Twice',
+        values: [
+          { name: 'A', value: 1 },
+          { name: 'B', value: 1 },
+        ],
+        initialValue: undefined,
+      },
+    ])
+    expect(twice.errors).toEqual(['data type "Twice": "B" and "A" both have the value 1.'])
+
+    const real = await apply([{ ...spec, name: 'Real', baseType: 'REAL', values: ['A'], initialValue: undefined }])
+    expect(real.errors.join(' ')).toContain('base type "REAL" is not an integer or bit-string type')
+
+    for (const name of ['Wide', 'Twice', 'Real']) {
+      expect(dataTypesIn().some((type) => type.name === name)).toBe(false)
+    }
   })
 })

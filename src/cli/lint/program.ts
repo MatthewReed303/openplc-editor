@@ -164,8 +164,12 @@ function pinsOf(
  * `x := 4; x := LIMIT(0, x, 3);` nor `t := a; y := t; t := b;` is a double
  * drive, so a read of the name between two writes (or on the second write's
  * right-hand side) starts the count again.
+ *
+ * A write whose right-hand side calls a function in `acting` is not counted:
+ * such a function also writes its in-out or output arguments, so each call does
+ * work and `x := F(...); x := G(...);` keeps both. `x := a; x := b;` still counts.
  */
-function unconditionalAssignments(statements: string): Map<string, number> {
+function unconditionalAssignments(statements: string, acting: ReadonlySet<string> = new Set()): Map<string, number> {
   const counts = new Map<string, number>()
   const readSinceWrite = new Set<string>()
   const noteReads = (text: string): void => {
@@ -201,7 +205,7 @@ function unconditionalAssignments(statements: string): Map<string, number> {
     const assignment = lineDepth === 0 ? /^(\w+(?:\.\w+)*)\s*:=/.exec(line) : null
     // `inst(…)` is a call, not an assignment, and `a.b := …` writes a member
     // rather than the variable — neither is a double drive.
-    if (assignment && !assignment[1].includes('.')) {
+    if (assignment && !assignment[1].includes('.') && !callsAny(line.slice(assignment[0].length), acting)) {
       const name = assignment[1].toUpperCase()
       noteReads(line.slice(assignment[0].length))
       const prior = counts.get(name) ?? 0
@@ -212,6 +216,33 @@ function unconditionalAssignments(statements: string): Map<string, number> {
     }
   }
   return counts
+}
+
+/** Does `text` call one of `names` (upper case)? */
+function callsAny(text: string, names: ReadonlySet<string>): boolean {
+  if (names.size === 0) return false
+  for (const match of text.matchAll(/\b(\w+)\s*\(/g)) if (names.has(match[1].toUpperCase())) return true
+  return false
+}
+
+/**
+ * Functions, from the project or a library, that write more than their result:
+ * any with a VAR_IN_OUT or VAR_OUTPUT parameter, or a VAR_EXTERNAL.
+ */
+function actingFunctions(pous: readonly PLCPou[], systemLibraries: readonly SystemLibrary[]): Set<string> {
+  const writes = (kind: string | undefined) => kind === 'inOut' || kind === 'output' || kind === 'external'
+  const names = new Set<string>()
+  for (const pou of pous) {
+    if (pou.pouType === 'function' && (pou.interface?.variables ?? []).some((v) => writes(v.class))) {
+      names.add(pou.name.toUpperCase())
+    }
+  }
+  for (const library of systemLibraries) {
+    for (const pou of library.pous) {
+      if (pou.type === 'function' && pou.variables.some((v) => writes(v.class))) names.add(pou.name.toUpperCase())
+    }
+  }
+  return names
 }
 
 /**
@@ -296,6 +327,7 @@ function lintMuxGaps(body: PouBody): LintFinding[] {
 export function lintProgram(input: LintInput): LintFinding[] {
   const findings: LintFinding[] = [...lintProgramInstances(input.st)]
   const bodies = splitPous(stripComments(input.st))
+  const acting = actingFunctions(input.pous, input.systemLibraries)
 
   for (const body of bodies) {
     const pou = input.pous.find((entry) => entry.name.toLowerCase() === body.name.toLowerCase())
@@ -357,7 +389,7 @@ export function lintProgram(input: LintInput): LintFinding[] {
 
     findings.push(...lintMuxGaps(body))
 
-    for (const [name, count] of unconditionalAssignments(body.statements)) {
+    for (const [name, count] of unconditionalAssignments(body.statements, acting)) {
       if (count < 2) continue
       findings.push({
         severity: 'error',

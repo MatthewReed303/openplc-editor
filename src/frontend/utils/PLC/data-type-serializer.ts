@@ -44,10 +44,20 @@ function renderVariableType(type: PLCVariableType): string {
   return type.value
 }
 
+/**
+ * `Mode : (IDLE, RUN) := IDLE;`, or, with a base type or values, the data type
+ * with named values of IEC 61131-3 Ed.3 Table 11 feature 2:
+ * `Status : USINT (IDLE := 0, RUN := 1) := IDLE;`.
+ */
 function renderEnumeratedLines(dt: Extract<PLCDataType, { derivation: 'enumerated' }>): string[] {
-  const values = dt.values.map((v) => v.description).join(', ')
+  const values = dt.values
+    .map((v) =>
+      v.value !== undefined && v.value.trim() !== '' ? `${v.description} := ${v.value.trim()}` : v.description,
+    )
+    .join(', ')
+  const base = dt.baseType !== undefined && dt.baseType.trim() !== '' ? `${dt.baseType.trim()} ` : ''
   const initial = dt.initialValue ? ` := ${dt.initialValue}` : ''
-  return [`  ${dt.name} : (${values})${initial};`]
+  return [`  ${dt.name} : ${base}(${values})${initial};`]
 }
 
 function renderStructureLines(dt: Extract<PLCDataType, { derivation: 'structure' }>): string[] {

@@ -15,6 +15,7 @@ import {
   findDebugVariable,
   findDebugVariableForField,
 } from './debug-variable-finder'
+import { enumMemberValues, hasNamedValues } from './PLC/enum-named-values'
 import {
   findArrayDataType,
   findFunctionBlockExternalVariables,
@@ -57,6 +58,19 @@ export function lookupEnumValues(projectType: string, dataTypes: PLCDataType[]):
 }
 
 /**
+ * If `projectType` names a data type with named values (IEC 61131-3 Ed.3
+ * 6.4.4.3), the value of each member, in the order `lookupEnumValues` gives the
+ * names. Undefined for an enumeration, whose member values are their positions,
+ * and for any other type. A value that is not an integer literal is NaN.
+ */
+export function lookupEnumCodes(projectType: string, dataTypes: PLCDataType[]): number[] | undefined {
+  const target = projectType.toUpperCase()
+  const dt = dataTypes.find((entry) => entry.name.toUpperCase() === target)
+  if (dt?.derivation !== 'enumerated' || !hasNamedValues(dt)) return undefined
+  return enumMemberValues(dt).map((member) => (member.value === undefined ? Number.NaN : Number(member.value)))
+}
+
+/**
  * Context for tree traversal containing all necessary lookup data.
  */
 export interface TraversalContext {
@@ -87,6 +101,8 @@ export interface DebugNodeVisitor<T> {
    * `enumValues` is set when the variable's project type is an enumerated
    * data type. The wire still carries the underlying INT — consumers map
    * the integer to `enumValues[i]` for display and reverse-map for force.
+   * `enumCodes` is set for a data type with named values: member i has the
+   * value `enumCodes[i]`, not i.
    */
   visitLeaf(
     name: string,
@@ -95,6 +111,7 @@ export interface DebugNodeVisitor<T> {
     typeName: string,
     debugIndex: number | undefined,
     enumValues?: string[],
+    enumCodes?: number[],
   ): T
 
   /**
@@ -188,6 +205,7 @@ function traverseNestedNode<T>(
         resolveLeafType(typeName, debugVar),
         debugVar?.index,
         lookupEnumValues(typeName, dataTypes),
+        lookupEnumCodes(typeName, dataTypes),
       )
     }
 
@@ -291,6 +309,7 @@ function traverseNestedNode<T>(
         resolveLeafType(typeName, debugVar),
         debugVar?.index,
         lookupEnumValues(typeName, dataTypes),
+        lookupEnumCodes(typeName, dataTypes),
       )
     }
 
@@ -414,6 +433,7 @@ function traverseNestedNode<T>(
     resolveLeafType(typeName, debugVar),
     debugVar?.index,
     lookupEnumValues(typeName, dataTypes),
+    lookupEnumCodes(typeName, dataTypes),
   )
 }
 

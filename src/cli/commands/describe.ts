@@ -14,10 +14,11 @@
 
 import type { OpenPLCStore } from '@root/frontend/store'
 import type { SystemLibrary } from '@root/middleware/shared/ports/library-types'
-import type { PLCDataType, PLCPou, PLCVariable } from '@root/middleware/shared/ports/types'
+import type { PLCPou, PLCVariable } from '@root/middleware/shared/ports/types'
 import { readRtosSettings } from '@root/middleware/shared/utils/rtos'
 
 import { boolFlag, type ParsedArgs, stringFlag } from '../args'
+import { describeDataType } from '../describe/data-types'
 import { describeFbdBody } from '../describe/fbd'
 import { describeLadderBody } from '../describe/ladder'
 import { describeProtocols } from '../describe/protocol'
@@ -194,35 +195,6 @@ function describeVariableType(type: PLCVariable['type']): Record<string, unknown
     definition: 'array',
     value: type.data.baseType.value,
     dimensions: type.data.dimensions.map((entry) => entry.dimension),
-  }
-}
-
-function describeDataType(dataType: PLCDataType): Record<string, unknown> | null {
-  if (dataType.derivation === 'enumerated') {
-    return {
-      name: dataType.name,
-      derivation: 'enumerated',
-      values: dataType.values.map((value) => value.description),
-      ...(dataType.initialValue ? { initialValue: dataType.initialValue } : {}),
-    }
-  }
-  if (dataType.derivation === 'structure') {
-    return {
-      name: dataType.name,
-      derivation: 'structure',
-      variables: dataType.variable.map((member) => ({
-        name: member.name,
-        type: { definition: member.type.definition, value: member.type.value },
-        ...(member.documentation ? { documentation: member.documentation } : {}),
-      })),
-    }
-  }
-  return {
-    name: dataType.name,
-    derivation: 'array',
-    baseType: { definition: dataType.baseType.definition, value: dataType.baseType.value },
-    dimensions: dataType.dimensions.map((entry) => entry.dimension),
-    ...(dataType.initialValue ? { initialValue: dataType.initialValue } : {}),
   }
 }
 

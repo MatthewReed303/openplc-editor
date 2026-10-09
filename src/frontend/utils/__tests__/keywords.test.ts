@@ -137,6 +137,11 @@ describe('isLegalIdentifier', () => {
     expect(reason).toBe('is a reserved word')
   })
 
+  it('accepts Now: IEC 61131-3 Ed.3 has no NOW keyword or standard function', () => {
+    expect(isLegalIdentifier('Now')).toEqual([true, ''])
+    expect(isLegalIdentifier('NOW')).toEqual([true, ''])
+  })
+
   it('returns false for a name with illegal characters', () => {
     const [legal, reason] = isLegalIdentifier('my-var')
     expect(legal).toBe(false)

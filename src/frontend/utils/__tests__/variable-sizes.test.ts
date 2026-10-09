@@ -548,6 +548,13 @@ describe('encodeForceValue', () => {
     expect(Array.from(encodeForceValue('0', 'INT', enumValues))).toEqual([0, 0])
   })
 
+  it('maps a named value to its value, not its position (IEC 61131-3 Ed.3 6.4.4.3)', () => {
+    // `Status : USINT (IDLE := 0, FAULT := 9)` debugs as a USINT.
+    expect(Array.from(encodeForceValue('FAULT', 'USINT', ['IDLE', 'FAULT'], [0, 9]))).toEqual([9])
+    expect(Array.from(encodeForceValue('7', 'USINT', ['IDLE', 'FAULT'], [0, 9]))).toEqual([7])
+    expect(() => encodeForceValue('FAULT', 'USINT', ['IDLE', 'FAULT'], [0, Number.NaN])).toThrow(/force it as a number/)
+  })
+
   it('rejects an unknown enum member name with a helpful error', () => {
     expect(() => encodeForceValue('Frobnicate', 'INT', ['On', 'Off'])).toThrow(
       /Unknown enum member.*Expected one of: On, Off/,

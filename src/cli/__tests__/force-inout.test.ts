@@ -10,11 +10,17 @@
  *
  *  - `debug force fb.inout` with a target forces the target, and says so.
  *  - Without a target it is refused with a message naming what to force.
- *  - A CONSTANT is refused too.
- *  - `debug list-vars` carries the in-out / read-only marks and the target.
+ *  - A CONSTANT is refused too, and so is a `raw` array element (stored without
+ *    a forcing wrapper, so the runtime refuses the force), or an in-out bound
+ *    to one.
+ *  - `debug list-vars` carries the in-out / read-only / raw marks and the target.
  */
 
+import { createTestStore } from '@root/frontend/store/testing'
+import { packDebugAddr, parseDebugMap } from '@root/frontend/utils/debug-parser'
+
 import type { DebugVariableIndex, ResolvedVariable } from '../debug/variables'
+import { indexDebugMap } from '../debug/variables'
 import { ErrorCode } from '../exit-codes'
 import type { PlcControl } from '../session/session-core'
 import { SessionCore } from '../session/session-core'
@@ -51,6 +57,29 @@ const constant: ResolvedVariable = {
   readOnly: true,
 }
 
+const rawElement: ResolvedVariable = {
+  name: 'main:colors[1]',
+  index: 5,
+  arr: 0,
+  elem: 5,
+  type: 'INT',
+  size: 2,
+  readOnly: true,
+  raw: true,
+}
+const rawInOut: ResolvedVariable = {
+  name: 'main:fb0.c[1]',
+  index: 6,
+  arr: 0,
+  elem: 6,
+  type: 'INT',
+  size: 2,
+  readOnly: true,
+  raw: true,
+  inOut: true,
+  target: 'main:colors[1]',
+}
+
 const plc: PlcControl = {
   start: () => Promise.resolve({ success: true }),
   stop: () => Promise.resolve({ success: true }),
@@ -77,7 +106,7 @@ function makeCore() {
     },
     getMd5Hash: () => Promise.resolve({ success: true as const, md5: 'abc', targetEndian: 'le' as const }),
   }
-  const all = [counter, boundInOut, unboundInOut, constant]
+  const all = [counter, boundInOut, unboundInOut, constant, rawElement, rawInOut]
   const index: DebugVariableIndex = {
     md5: 'abc',
     warnings: [],
@@ -164,6 +193,77 @@ describe('forcing a VAR_IN_OUT (IEC 61131-3 §3.48)', () => {
       { name: 'main:acc0.total', type: 'INT', size: 2, readOnly: true, inOut: true, target: 'main:counter' },
       { name: 'main:acc1.total', type: 'INT', size: 2, readOnly: true, inOut: true },
       { name: 'main:limit', type: 'INT', size: 2, readOnly: true },
+      { name: 'main:colors[1]', type: 'INT', size: 2, readOnly: true, raw: true },
+      {
+        name: 'main:fb0.c[1]',
+        type: 'INT',
+        size: 2,
+        readOnly: true,
+        raw: true,
+        inOut: true,
+        target: 'main:colors[1]',
+      },
     ])
+  })
+})
+
+describe('an array element stored without a forcing wrapper (raw)', () => {
+  it('refuses a force and an unforce, sending nothing', async () => {
+    const { core, writes } = makeCore()
+    const forced = await core.handle({ id: 1, kind: 'force', name: 'main:colors[1]', value: '2' })
+    const released = await core.handle({ id: 2, kind: 'unforce', name: 'main:colors[1]' })
+
+    for (const response of [forced, released]) {
+      if (response.ok) throw new Error('expected a refusal')
+      expect(response.error.code).toBe(ErrorCode.ValueInvalid)
+      expect(response.error.message).toContain('main:colors[1]')
+      expect(response.error.message).toContain('not forced')
+    }
+    expect(writes).toEqual([])
+  })
+
+  it('refuses an in-out bound to one rather than forcing the element', async () => {
+    const { core, writes } = makeCore()
+    const response = await core.handle({ id: 1, kind: 'force', name: 'main:fb0.c[1]', value: '2' })
+
+    if (response.ok) throw new Error('expected a refusal')
+    expect(response.error.message).toContain('main:fb0.c[1]')
+    expect(response.error.message).toContain('main:colors[1]')
+    expect(writes).toEqual([])
+  })
+
+  it('carries the raw mark from debug-map.json as raw + readOnly', () => {
+    const map = parseDebugMap(
+      JSON.stringify({
+        version: 2,
+        md5: 'abc',
+        typeTags: {},
+        arrays: [{ index: 0, count: 3 }],
+        leaves: [
+          { arrayIdx: 0, elemIdx: 0, path: 'INSTANCE0.COLORS[1]', type: 'INT', size: 2, raw: true },
+          { arrayIdx: 0, elemIdx: 1, path: 'INSTANCE0.WRAPPED[1]', type: 'INT', size: 2 },
+          {
+            arrayIdx: 0,
+            elemIdx: 2,
+            path: 'INSTANCE0.FB0.C[1]',
+            type: 'INT',
+            size: 2,
+            readOnly: true,
+            indirect: true,
+            raw: true,
+            target: 'INSTANCE0.COLORS[1]',
+          },
+        ],
+      }),
+    )
+    if (!map) throw new Error('fixture did not parse')
+    const index = indexDebugMap(createTestStore(), map)
+    const at = (elemIdx: number) => index.byIndex.get(packDebugAddr({ arrayIdx: 0, elemIdx }))
+
+    expect(at(0)).toMatchObject({ readOnly: true, raw: true })
+    expect(at(0)).not.toHaveProperty('inOut')
+    expect(at(1)).not.toHaveProperty('raw')
+    expect(at(1)).not.toHaveProperty('readOnly')
+    expect(at(2)).toMatchObject({ readOnly: true, raw: true, inOut: true, target: 'INSTANCE0.COLORS[1]' })
   })
 })

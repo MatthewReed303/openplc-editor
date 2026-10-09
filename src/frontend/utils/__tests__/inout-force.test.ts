@@ -14,6 +14,7 @@ import {
   canForceDebugLeaf,
   clearDebugLeafAccess,
   describeInOutLeaf,
+  describeRawLeaf,
   forcedKeyFor,
   getDebugLeafAccess,
   registerDebugLeafAccess,
@@ -117,5 +118,87 @@ describe('debug leaf access (IEC 61131-3 §3.48)', () => {
     clearDebugLeafAccess()
     expect(resolveForceIndex(at(3))).toBe(at(3))
     expect(canForceDebugLeaf(at(2))).toBe(true)
+  })
+})
+
+// `raw`: an element of a POU's own ARRAY OF enumeration / alias / subrange,
+// stored without the forcing wrapper. The runtime refuses a force there
+// (LEAF_FLAG_RAW), so the editor never offers one.
+const RAW_MAP_JSON = JSON.stringify({
+  version: 2,
+  md5: 'raw',
+  typeTags: {},
+  arrays: [{ index: 0, count: 5 }],
+  leaves: [
+    { arrayIdx: 0, elemIdx: 0, path: 'INSTANCE0.COLORS[1]', type: 'INT', size: 2, raw: true },
+    { arrayIdx: 0, elemIdx: 1, path: 'INSTANCE0.WRAPPED[1]', type: 'INT', size: 2 },
+    {
+      arrayIdx: 0,
+      elemIdx: 2,
+      path: 'INSTANCE0.FB0.C[1]',
+      type: 'INT',
+      size: 2,
+      readOnly: true,
+      indirect: true,
+      raw: true,
+      target: 'INSTANCE0.COLORS[1]',
+    },
+    {
+      arrayIdx: 0,
+      elemIdx: 3,
+      path: 'INSTANCE0.FB1.W[1]',
+      type: 'INT',
+      size: 2,
+      readOnly: true,
+      indirect: true,
+      target: 'INSTANCE0.WRAPPED[1]',
+    },
+    { arrayIdx: 0, elemIdx: 4, path: 'INSTANCE0.LIMIT', type: 'INT', size: 2, readOnly: true },
+  ],
+})
+
+describe('debug leaf access for raw array elements', () => {
+  function registerRaw(): DebugMap {
+    const map = parseDebugMap(RAW_MAP_JSON)
+    if (!map) throw new Error('fixture did not parse')
+    registerDebugLeafAccess(map)
+    return map
+  }
+
+  it('keeps the raw mark through parseDebugMap', () => {
+    const map = registerRaw()
+    expect(map.leaves[0]).toMatchObject({ raw: true })
+    expect(map.leaves[0]).not.toHaveProperty('readOnly')
+  })
+
+  it('offers no force for a raw element', () => {
+    registerRaw()
+    expect(getDebugLeafAccess(at(0))).toMatchObject({ readOnly: true, raw: true, indirect: false })
+    expect(resolveForceIndex(at(0))).toBeUndefined()
+    expect(canForceDebugLeaf(at(0))).toBe(false)
+    expect(forcedKeyFor('main:colors[1]', at(0))).toBe('main:colors[1]')
+  })
+
+  it('still forces an ordinary element and an in-out bound to one', () => {
+    registerRaw()
+    expect(canForceDebugLeaf(at(1))).toBe(true)
+    expect(resolveForceIndex(at(1))).toBe(at(1))
+    expect(resolveForceIndex(at(3))).toBe(at(1))
+  })
+
+  it('offers no force for an in-out bound to a raw element', () => {
+    registerRaw()
+    expect(resolveForceIndex(at(2))).toBeUndefined()
+    expect(canForceDebugLeaf(at(2))).toBe(false)
+    expect(describeInOutLeaf(at(2))).toBe('In-out: shows INSTANCE0.COLORS[1], an array element that cannot be forced.')
+  })
+
+  it('explains a raw element, and nothing else', () => {
+    registerRaw()
+    expect(describeRawLeaf(at(0))).toContain('cannot be forced')
+    expect(describeRawLeaf(at(1))).toBeUndefined()
+    expect(describeRawLeaf(at(2))).toBeUndefined()
+    expect(describeRawLeaf(at(4))).toBeUndefined()
+    expect(describeInOutLeaf(at(0))).toBeUndefined()
   })
 })

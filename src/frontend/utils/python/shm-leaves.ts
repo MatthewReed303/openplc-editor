@@ -175,21 +175,23 @@ const indexDataTypes = (dataTypes: readonly PLCDataType[]): Map<string, PLCDataT
   new Map(dataTypes.map((dataType) => [dataType.name.toUpperCase(), dataType]))
 
 /**
- * How an enumeration crosses: as a 32-bit signed integer.
- *
- * Matches the C++ storage rather than the IEC view, deliberately. The editor's
- * enumerated data type carries no base type, so `type-codegen` emits a bare
- * `enum class Mode { … }` — and a C++ enum with no explicit base has `int` as
- * its underlying type, i.e. 32 bits. `debug-map.json` reports such a leaf as
- * `INT size=2` because that is the IEC-level view, and this used to follow that,
- * casting through `int16_t`.
- *
- * Nothing had gone wrong (no project has 32 768 enumerators), but the cast was
- * narrowing something the compiler stores wide, which is a truncation waiting
- * for a reason. Carrying the full width removes the question instead of
- * documenting it. The four extra bytes per enumeration are irrelevant here.
+ * How an enumeration crosses: as a 32-bit signed integer, wide enough for an
+ * enumeration (STruC++ stores one as INT) and for every named-values base up
+ * to 32 bits. The C++ glue casts either way, so the field need not match the
+ * storage width.
  */
 const ENUM_BASE_DESCRIPTOR = SHM_SCALAR_TYPES.dint
+
+/**
+ * A data type with named values (IEC 61131-3 Ed.3 6.4.4.3) based on a 64-bit
+ * or unsigned 32-bit type crosses at its base's width, which a DINT cannot hold.
+ */
+const enumDescriptor = (baseType: string | undefined): ShmFieldDescriptor => {
+  const base = baseType?.trim().toLowerCase()
+  return base === 'lint' || base === 'ulint' || base === 'lword' || base === 'udint' || base === 'dword'
+    ? (SHM_SCALAR_TYPES[base] ?? ENUM_BASE_DESCRIPTOR)
+    : ENUM_BASE_DESCRIPTOR
+}
 
 /** Everything the recursion carries that does not change between levels. */
 interface WalkEnv {
@@ -306,7 +308,7 @@ const walk = (
           path,
           access,
           objectPath,
-          descriptor: ENUM_BASE_DESCRIPTOR,
+          descriptor: enumDescriptor(dataType.baseType),
           enumTypeName: dataType.name,
           ...(arrayElement ? { arrayElement: true } : {}),
         },

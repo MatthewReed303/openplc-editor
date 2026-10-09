@@ -6,9 +6,10 @@ import { usePouSnapshot } from '../../../../../hooks/use-pou-snapshot'
 import { useOpenPLCStore } from '../../../../../store'
 import { enumeratedValidation } from '../../../../../store/slices/project/validation/variables'
 import { cn } from '../../../../../utils/cn'
+import { enumMemberValues, validateEnumValues } from '../../../../../utils/PLC/enum-named-values'
 import { GenericDataTypeTable } from '../../../../_atoms/generic-data-type-table'
 import { toast } from '../../../../_features/[app]/toast/use-toast'
-import { DescriptionCell } from './editable-cell'
+import { DescriptionCell, ValueCell } from './editable-cell'
 
 type PLCEnumeratedDatatype = Extract<PLCDataType, { derivation: 'enumerated' }>
 
@@ -54,7 +55,14 @@ const EnumeratedTable = ({
     handleFileAndWorkspaceSavedState(editor.meta.name)
   }
 
-  const columnHelper = createColumnHelper<{ description: string }>()
+  // The value each member has without one of its own, for the greyed hint.
+  const implicitValues = React.useMemo(() => {
+    const current = dataTypes.find((dt) => dt.name === name)
+    if (!current || current.derivation !== 'enumerated') return []
+    return enumMemberValues({ ...current, values }).map((member) => member.value?.toString())
+  }, [values, name, dataTypes])
+
+  const columnHelper = createColumnHelper<{ description: string; value?: string }>()
   const columns = React.useMemo(
     () => [
       columnHelper.accessor('description', {
@@ -72,9 +80,47 @@ const EnumeratedTable = ({
           />
         ),
       }),
+      columnHelper.accessor('value', {
+        size: 160,
+        minSize: 100,
+        maxSize: 200,
+        enableResizing: false,
+        cell: (cellProps) => (
+          <ValueCell
+            key={`value-${cellProps.row.id}`}
+            id={`value-input-${cellProps.row.index}`}
+            implicitValue={implicitValues[cellProps.row.index]}
+            onCommit={(value) => commitValue(cellProps.row.index, value)}
+            {...cellProps}
+          />
+        ),
+      }),
     ],
-    [values, name, selectedRow, initialValue],
+    [values, name, selectedRow, initialValue, implicitValues],
   )
+
+  /**
+   * Store a member's value, if the data type stays valid: an integer literal,
+   * in the base type's range, and no two members with one value. An empty
+   * value clears it.
+   */
+  const commitValue = (rowIndex: number, value: string): boolean => {
+    const current = dataTypes.find((dt) => dt.name === name)
+    if (!current || current.derivation !== 'enumerated') return false
+    const newRows = values.map((row, index) => {
+      if (index !== rowIndex) return row
+      const { value: _previous, ...rest } = row
+      return value === '' ? rest : { ...rest, value }
+    })
+    const problems = validateEnumValues({ ...current, values: newRows })
+    if (problems.length > 0) {
+      toast({ title: 'Invalid enumerated value', description: problems[0], variant: 'fail' })
+      return false
+    }
+    captureAndPush(editor.meta.name)
+    writeValues(newRows)
+    return true
+  }
 
   const handleBlur = (rowIndex: number) => {
     const prevRows = [...values]
@@ -90,7 +136,7 @@ const EnumeratedTable = ({
 
       if (inputValue === '') {
         const newRows = prevRows.filter((_, index) => index !== rowIndex)
-        writeValues(newRows.map((row) => ({ description: row.description })))
+        writeValues(newRows)
         resetBorders()
         setArrayTable({ selectedRow: -1 })
         toast({
@@ -106,7 +152,7 @@ const EnumeratedTable = ({
 
       if (checkIfExists) {
         const newRows = prevRows.filter((_, index) => index !== rowIndex)
-        writeValues(newRows.map((row) => ({ description: row.description })))
+        writeValues(newRows)
         resetBorders()
         setArrayTable({ selectedRow: -1 })
         toast({
@@ -119,7 +165,7 @@ const EnumeratedTable = ({
 
       if (!validation.ok) {
         const newRows = prevRows.filter((_, index) => index !== rowIndex)
-        writeValues(newRows.map((row) => ({ description: row.description })))
+        writeValues(newRows)
         resetBorders()
         setArrayTable({ selectedRow: -1 })
         toast({
@@ -133,7 +179,7 @@ const EnumeratedTable = ({
           ...row,
           description: index === rowIndex ? inputValue : row.description,
         }))
-        writeValues(newRows.map((row) => ({ description: row.description })))
+        writeValues(newRows)
         return newRows
       }
     }

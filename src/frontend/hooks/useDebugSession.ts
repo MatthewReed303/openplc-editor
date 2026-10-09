@@ -222,11 +222,18 @@ export function useDebugSession(): UseDebugSessionReturn {
   }, [debuggerPort, workspaceActions])
 
   const forceVariable = useCallback(
-    async (index: number, force: boolean, value?: string, type?: string, enumValues?: string[]): Promise<boolean> => {
+    async (
+      index: number,
+      force: boolean,
+      value?: string,
+      type?: string,
+      enumValues?: string[],
+      enumCodes?: number[],
+    ): Promise<boolean> => {
       let valueBuffer: Uint8Array | undefined
       if (force) {
         try {
-          valueBuffer = encodeForceValue(value ?? '0', type ?? 'BOOL', enumValues)
+          valueBuffer = encodeForceValue(value ?? '0', type ?? 'BOOL', enumValues, enumCodes)
         } catch (err) {
           consoleActions.addLog({
             level: 'error',

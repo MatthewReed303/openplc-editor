@@ -6,8 +6,14 @@ import { PlusIcon } from '../../../../assets/icons/interface/Plus'
 import { StickArrowIcon } from '../../../../assets/icons/interface/StickArrow'
 import { usePouSnapshot } from '../../../../hooks/use-pou-snapshot'
 import { useOpenPLCStore } from '../../../../store'
+import {
+  ENUM_BASE_TYPES,
+  validateEnumeratedDataType,
+  validateEnumValues,
+} from '../../../../utils/PLC/enum-named-values'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../../../_atoms/select'
 import TableActions from '../../../_atoms/table-actions'
+import { toast } from '../../../_features/[app]/toast/use-toast'
 import { EnumeratedTable } from './table'
 
 type PLCEnumeratedDatatype = Extract<PLCDataType, { derivation: 'enumerated' }>
@@ -49,6 +55,36 @@ const EnumeratorDataType = ({ data, ...rest }: EnumDatatypeProps) => {
     handleFileAndWorkspaceSavedState(editor.meta.name)
   }
 
+  /**
+   * The base type of a data type with named values (IEC 61131-3 Ed.3 6.4.4.3),
+   * or none for a plain enumeration. Refused when a value would not fit it.
+   */
+  const handleBaseTypeChange = (value: string) => {
+    const next: PLCEnumeratedDatatype = { ...data }
+    if (value === 'none') delete next.baseType
+    else next.baseType = value
+    if ((next.baseType ?? '') === (data.baseType ?? '')) return
+    const problems = validateEnumeratedDataType(next)
+    if (problems.length > 0) {
+      toast({ title: 'Cannot change the base type', description: problems[0], variant: 'fail' })
+      return
+    }
+    captureAndPush(editor.meta.name)
+    updateDatatype(data.name, next)
+    handleFileAndWorkspaceSavedState(editor.meta.name)
+  }
+
+  /**
+   * Whether removing or moving a row would give two members one value: a member
+   * without its own value is one more than the member before it.
+   */
+  const valuesClash = (rows: PLCEnumeratedDatatype['values']): boolean => {
+    const problems = validateEnumValues({ ...data, values: rows })
+    if (problems.length === 0) return false
+    toast({ title: 'Cannot change the order', description: problems[0], variant: 'fail' })
+    return true
+  }
+
   // `updateDatatype` is a full replace — spread `data` first so we
   // don't strip `name` / `derivation` and corrupt the entry for
   // downstream consumers.
@@ -63,7 +99,7 @@ const EnumeratorDataType = ({ data, ...rest }: EnumDatatypeProps) => {
     setTableData((prevRows) => {
       const newRows = [...prevRows, { description: '' }]
       setArrayTable({ selectedRow: newRows.length - 1 })
-      writeValues(newRows.map((row) => ({ description: row?.description })))
+      writeValues(newRows)
       return newRows
     })
   }
@@ -75,10 +111,11 @@ const EnumeratorDataType = ({ data, ...rest }: EnumDatatypeProps) => {
       if (arrayTable.selectedRow !== null) {
         const newRows = prevRows.filter((_, index) => index !== arrayTable.selectedRow)
 
+        if (valuesClash(newRows)) return prevRows
         const newFocusIndex = arrayTable.selectedRow === newRows.length ? newRows.length - 1 : arrayTable.selectedRow
         setArrayTable({ selectedRow: newFocusIndex })
 
-        writeValues(newRows.map((row) => ({ description: row?.description })))
+        writeValues(newRows)
 
         return newRows
       }
@@ -95,11 +132,12 @@ const EnumeratorDataType = ({ data, ...rest }: EnumDatatypeProps) => {
         const temp = newRows[arrayTable.selectedRow]
         newRows[arrayTable.selectedRow] = newRows[arrayTable.selectedRow - 1]
         newRows[arrayTable.selectedRow - 1] = temp
+        if (valuesClash(newRows)) return prevRows
 
         const newFocusIndex = arrayTable.selectedRow - 1
         setArrayTable({ selectedRow: newFocusIndex })
 
-        writeValues(newRows.map((row) => ({ description: row?.description })))
+        writeValues(newRows)
 
         prevRows = newRows
       }
@@ -116,11 +154,12 @@ const EnumeratorDataType = ({ data, ...rest }: EnumDatatypeProps) => {
         const temp = newRows[arrayTable.selectedRow]
         newRows[arrayTable.selectedRow] = newRows[arrayTable.selectedRow + 1]
         newRows[arrayTable.selectedRow + 1] = temp
+        if (valuesClash(newRows)) return prevRows
 
         const newFocusIndex = arrayTable.selectedRow + 1
         setArrayTable({ selectedRow: newFocusIndex })
 
-        writeValues(newRows.map((row) => ({ description: row?.description })))
+        writeValues(newRows)
 
         prevRows = newRows
       }
@@ -136,13 +175,39 @@ const EnumeratorDataType = ({ data, ...rest }: EnumDatatypeProps) => {
     >
       <div className='flex w-full justify-between gap-8'>
         <div className='w-[600px]'>
-          <div aria-label='Enumerated base type container' className='flex flex-col gap-3'></div>
+          <div aria-label='Enumerated base type container' className='mb-3 flex items-center gap-3'>
+            <label className='cursor-default select-none font-caption text-xs font-medium text-neutral-1000 dark:text-neutral-100'>
+              Base type:
+            </label>
+            <Select onValueChange={handleBaseTypeChange} value={data.baseType ? data.baseType.toUpperCase() : 'none'}>
+              <SelectTrigger
+                aria-label='Enumerated base type'
+                withIndicator
+                className='flex h-7 w-full max-w-44 items-center justify-between gap-2 rounded-lg border border-neutral-400 bg-white px-3 py-2 font-caption text-xs font-normal text-neutral-950 focus-within:border-brand focus:border-brand focus:outline-none dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100'
+              >
+                {data.baseType ? data.baseType.toUpperCase() : 'None (enumeration)'}
+              </SelectTrigger>
+              <SelectContent className='box h-fit max-h-[200px] w-[--radix-select-trigger-width] overflow-auto rounded-lg bg-white outline-none dark:bg-neutral-950'>
+                {['none', ...ENUM_BASE_TYPES].map((option) => (
+                  <SelectItem
+                    key={option}
+                    value={option}
+                    className='flex w-full cursor-pointer items-center justify-center py-1 outline-none hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                  >
+                    <span className='text-center font-caption text-xs font-normal text-neutral-700 dark:text-neutral-100'>
+                      {option === 'none' ? 'None (enumeration)' : option}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div
             aria-label='Enum data type table actions container'
             className='mb-3 flex h-8 w-full items-center justify-between'
           >
             <p className='cursor-default select-none font-caption text-xs font-medium text-neutral-1000 dark:text-neutral-100'>
-              Description
+              Description and value
             </p>
             <div
               aria-label='Data type table actions buttons container'

@@ -24,7 +24,7 @@ function setUp() {
       version: 2,
       md5: 'abc',
       typeTags: {},
-      arrays: [{ index: 0, count: 3 }],
+      arrays: [{ index: 0, count: 4 }],
       leaves: [
         { arrayIdx: 0, elemIdx: 0, path: 'INSTANCE0.COUNTER', type: 'INT', size: 2 },
         {
@@ -38,6 +38,8 @@ function setUp() {
           target: 'INSTANCE0.COUNTER',
         },
         { arrayIdx: 0, elemIdx: 2, path: 'INSTANCE0.ACC1.TOTAL', type: 'INT', size: 2, readOnly: true, indirect: true },
+        // An element C++ stores without a forcing wrapper: the runtime refuses a force.
+        { arrayIdx: 0, elemIdx: 3, path: 'INSTANCE0.COLORS[1]', type: 'INT', size: 2, raw: true },
       ],
     }),
   )
@@ -48,6 +50,7 @@ function setUp() {
       ['main:counter', at(0)],
       ['main:acc0.total', at(1)],
       ['main:acc1.total', at(2)],
+      ['main:colors[1]', at(3)],
     ]),
   )
   store.getState().workspaceActions.setDebugForcedVariables(new Map())
@@ -101,5 +104,16 @@ describe('GUI force of a VAR_IN_OUT (IEC 61131-3 §3.48)', () => {
 
     expect(calls).toEqual([{ index: at(0), force: true }])
     expect([...forced().keys()]).toEqual(['main:counter'])
+  })
+
+  it('sends nothing for an array element stored without a forcing wrapper', async () => {
+    const { port, calls } = setUp()
+    const ok = await forceDebugVariable(store, port, 'main:colors[1]', at(3), new Uint8Array([2, 0]), true, 'INT')
+    const released = await releaseDebugVariable(store, port, 'main:colors[1]', at(3))
+
+    expect(ok).toBe(false)
+    expect(released).toBe(false)
+    expect(calls).toEqual([])
+    expect(forced().size).toBe(0)
   })
 })

@@ -591,12 +591,16 @@ export function renderOk(response: OkResponse): string {
               variable.type,
               String(variable.size),
               variable.inOut
-                ? variable.target !== undefined
-                  ? `in-out of ${variable.target} (forces it)`
-                  : 'in-out (read-only)'
-                : variable.readOnly
-                  ? 'read-only'
-                  : '',
+                ? variable.raw
+                  ? 'in-out of an array element (not forceable)'
+                  : variable.target !== undefined
+                    ? `in-out of ${variable.target} (forces it)`
+                    : 'in-out (read-only)'
+                : variable.raw
+                  ? 'not forceable (array element)'
+                  : variable.readOnly
+                    ? 'read-only'
+                    : '',
             ]),
           )
     case 'read':

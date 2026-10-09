@@ -1,4 +1,5 @@
 import type { PLCDataType, PLCVariable } from '../../../middleware/shared/ports/types'
+import { enumMemberValues } from '../PLC/enum-named-values'
 import { resolveFunctionBlockPins } from '../PLC/function-block-pins'
 import { pythonShmRuntime } from './python-shm-runtime'
 import { renderLayoutTable } from './shm-layout-table'
@@ -46,8 +47,8 @@ const generateTypeDeclarations = (variables: PLCVariable[], context: ShmWalkCont
   for (const dataType of referenced) {
     if (dataType.derivation === 'enumerated') {
       code += `class ${dataType.name}(IntEnum):\n`
-      dataType.values.forEach((value, index) => {
-        code += `    ${value.description} = ${index}\n`
+      enumMemberValues(dataType).forEach((member, index) => {
+        code += `    ${member.name} = ${member.value ?? index}\n`
       })
       code += '\n'
       continue

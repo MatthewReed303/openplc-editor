@@ -16,7 +16,7 @@ beforeEach(() => {
       version: 2,
       md5: 'abc',
       typeTags: {},
-      arrays: [{ index: 0, count: 3 }],
+      arrays: [{ index: 0, count: 4 }],
       leaves: [
         { arrayIdx: 0, elemIdx: 0, path: 'INSTANCE0.COUNTER', type: 'INT', size: 2 },
         {
@@ -30,6 +30,7 @@ beforeEach(() => {
           target: 'INSTANCE0.COUNTER',
         },
         { arrayIdx: 0, elemIdx: 2, path: 'INSTANCE0.ACC1.TOTAL', type: 'INT', size: 2, readOnly: true, indirect: true },
+        { arrayIdx: 0, elemIdx: 3, path: 'INSTANCE0.COLORS[1]', type: 'INT', size: 2, raw: true },
       ],
     }),
   )
@@ -48,6 +49,11 @@ describe('DebugInOutNote', () => {
   it('says an in-out without a target is read-only', () => {
     render(<DebugInOutNote debugIndex={at(2)} />)
     expect(screen.getByRole('note').textContent).toContain('read-only')
+  })
+
+  it('says why an array element stored without a forcing wrapper offers no force', () => {
+    render(<DebugInOutNote debugIndex={at(3)} />)
+    expect(screen.getByRole('note').textContent).toContain('cannot be forced')
   })
 
   it('renders nothing for an ordinary variable', () => {

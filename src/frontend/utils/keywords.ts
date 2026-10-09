@@ -302,8 +302,8 @@ export const builtinFunctions = [
   'MOVE',
   'FILL',
 
-  // System functions
-  'NOW',
+  // System functions. NOW is not reserved: IEC 61131-3 Ed.3 has no NOW keyword
+  // or standard function, and no bundled library declares one.
   'RTC',
   'SEMA',
   '__NEW',

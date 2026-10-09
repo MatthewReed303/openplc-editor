@@ -38,6 +38,8 @@ interface LeafMeta {
   type: string
   /** Enum member names indexed by integer value, when the leaf is enum-typed. */
   enumValues?: string[]
+  /** Each member's value, for a data type with named values (see `DebugTreeNode.enumCodes`). */
+  enumCodes?: number[]
 }
 
 /**
@@ -63,6 +65,7 @@ function collectAllLeafMeta(nodes: DebugTreeNode[]): Map<number, LeafMeta[]> {
     } else if (node.debugIndex !== undefined) {
       const meta: LeafMeta = { compositeKey: node.compositeKey, type: node.type }
       if (node.enumValues) meta.enumValues = node.enumValues
+      if (node.enumCodes) meta.enumCodes = node.enumCodes
       const existing = result.get(node.debugIndex)
       if (existing) existing.push(meta)
       else result.set(node.debugIndex, [meta])
@@ -256,8 +259,9 @@ export function useDebugPolling({ debugTreesRef }: UseDebugPollingOptions): void
           // Translate enum integers to member names so every consumer (watch
           // panel, ladder, FBD, hover) reads the same display value.
           // Out-of-range falls back to the raw integer.
-          const enumValues = metas[0].enumValues
-          const stored = enumValues !== undefined ? (enumValues[Number(value)] ?? value) : value
+          const { enumValues, enumCodes } = metas[0]
+          const position = enumCodes !== undefined ? enumCodes.indexOf(Number(value)) : Number(value)
+          const stored = enumValues !== undefined ? (enumValues[position] ?? value) : value
           const changed = type === 'BOOL' ? changedBool : changedNonBool
           const current = type === 'BOOL' ? currentBool : currentNonBool
           for (const m of metas) {

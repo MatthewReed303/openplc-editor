@@ -301,7 +301,10 @@ function projectDataType(dt: SchemaDataType): TranspileDataType {
     return {
       name: dt.name,
       derivation: 'enumerated',
-      values: dt.values.map((v) => ({ description: v.description })),
+      ...(dt.baseType ? { baseType: dt.baseType } : {}),
+      values: dt.values.map((v) =>
+        v.value ? { description: v.description, value: v.value } : { description: v.description },
+      ),
       ...(dt.initialValue ? { initialValue: dt.initialValue } : {}),
     }
   }

@@ -37,8 +37,10 @@ const PLCArrayDatatypeSchema = z.object({
 const PLCEnumeratedDatatypeSchema = z.object({
   name: z.string(),
   derivation: z.literal('enumerated'),
+  // A data type with named values (IEC 61131-3 Ed.3 6.4.4.3); see `ports/types.ts`.
+  baseType: z.string().optional(),
   initialValue: z.string().optional(),
-  values: z.array(z.object({ description: z.string() })),
+  values: z.array(z.object({ description: z.string(), value: z.string().optional() })),
 })
 
 const PLCStructureVariableSchema = z.object({

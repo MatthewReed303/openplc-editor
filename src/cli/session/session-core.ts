@@ -159,6 +159,7 @@ export class SessionCore {
           type: variable.type,
           size: variable.size,
           ...(variable.readOnly ? { readOnly: true } : {}),
+          ...(variable.raw ? { raw: true } : {}),
           ...(variable.inOut ? { inOut: true } : {}),
           ...(variable.target !== undefined ? { target: variable.target } : {}),
         }))
@@ -456,12 +457,16 @@ export class SessionCore {
    * The variable a force of `variable` lands on. A function block's VAR_IN_OUT
    * is the caller's variable (IEC 61131-3 §3.48) — a read-only view here — so
    * forcing it forces the variable it is bound to, at that variable's own name,
-   * when the debug map can name it. A CONSTANT is never forced.
+   * when the debug map can name it. A CONSTANT is never forced, nor is an array
+   * element stored without a forcing wrapper (`raw`): the runtime refuses it.
    */
   private forceTargetOf(variable: ResolvedVariable): { variable: ResolvedVariable } | { error: string } {
     if (!variable.readOnly) return { variable }
     if (variable.inOut) {
       const target = variable.target !== undefined ? findVariable(this.options.index, variable.target) : undefined
+      if (target?.raw) {
+        return { error: rawRefusal(variable.name, `is a function block's in-out bound to "${target.name}", which`) }
+      }
       if (target) return { variable: target }
       return {
         error:
@@ -469,6 +474,7 @@ export class SessionCore {
           `Force that variable instead.`,
       }
     }
+    if (variable.raw) return { error: rawRefusal(variable.name, 'is') }
     return { error: `"${variable.name}" is read-only (CONSTANT) and cannot be forced` }
   }
 
@@ -802,4 +808,16 @@ function durationNanoseconds(text: string): number | null {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Why a `raw` leaf is not forced: C++ stores it bare, with nowhere to keep a
+ * force, and the runtime refuses one (LEAF_FLAG_RAW). `what` continues the
+ * sentence after the variable's name.
+ */
+function rawRefusal(name: string, what: string): string {
+  return (
+    `"${name}" ${what} is an array element of an enumeration, alias or subrange, stored without a ` +
+    `forcing wrapper: it can be watched but not forced`
+  )
 }

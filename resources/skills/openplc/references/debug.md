@@ -65,21 +65,18 @@ Prefer the environment form: a flag lands in shell history and job logs.
 See `docs/CLI.md` in the editor repository for the session protocol and the full
 flag list.
 
-## Forcing an enumerated variable does not take
+## Forcing an enumerated variable
 
-Reading one works. Forcing one is accepted, reads back as forced, and the
-program never sees the new value — verified on three members of one structure:
+An enumeration is published as `INT` and a data type with named values as its
+base type (`USINT` for `Status : USINT (...)`); force it with the member's
+number, or by name in the editor. A library built before STruC++ stored
+enumerations as INT still holds them as 4 bytes, and forcing one of its
+enumerations does not take until the library is rebuilt.
 
-| member      | type       | forced | seen by the program |
-| ----------- | ---------- | ------ | ------------------- |
-| `Cfg.Id`    | INT        | 99     | 99                  |
-| `Cfg.Speed` | REAL       | 3.25   | 3.25                |
-| `Cfg.Mode`  | enumerated | 2      | 0                   |
-
-The cause is in the debug map, which STruC++ generates: an enumerated variable
-is published as `INT` of 2 bytes while the generated C++ declares
-`enum class` (4 bytes). Reads survive that on a little-endian target for small
-ordinals; a write does not land.
-
-So drive an enum from logic, or from a plain INT you force, rather than by
-forcing the enum itself.
+An element of an `ARRAY OF` an enumeration, alias or subrange declared in a POU
+or as a global (`colors : ARRAY[1..3] OF Color`) is stored without a forcing
+wrapper: it is watched like any variable, but it cannot be forced. Inside a named
+ARRAY type or a STRUCT, alias and subrange elements are stored the same way,
+while enumeration elements keep their wrapper and force. `debug list-vars` marks
+each one that cannot be forced `not forceable (array element)` (`raw` and
+`readOnly` in `--json`), and `debug force` refuses it.
