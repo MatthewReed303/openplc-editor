@@ -4,11 +4,8 @@
   "asar": true,
   "asarUnpack": "**\\*.{node,dll}",
   "generateUpdatesFilesForAllChannels": true,
-  "files": [
-    "dist",
-    "node_modules",
-    "package.json"
-  ],
+  "files": ["dist", "node_modules", "package.json"],
+  "afterPack": "scripts/mac-inject-local-network-usage.js",
   "afterSign": "scripts/notarize.js",
   "directories": {
     "app": "release/app",
@@ -43,14 +40,12 @@
     ],
     "target": {
       "target": "default",
-      "arch": [
-        "arm64",
-        "x64"
-      ]
+      "arch": ["arm64", "x64"]
     },
     "extendInfo": {
       "CFBundleDisplayName": "OpenPLC Editor",
-      "CFBundleName": "OpenPLC Editor"
+      "CFBundleName": "OpenPLC Editor",
+      "NSLocalNetworkUsageDescription": "OpenPLC Editor needs local network access to discover and connect to PLCs on your network."
     },
     "type": "distribution",
     "hardenedRuntime": true,
@@ -90,9 +85,7 @@
     "target": [
       {
         "target": "nsis",
-        "arch": [
-          "x64"
-        ]
+        "arch": ["x64"]
       }
     ],
     "artifactName": "${productName}_${version}.${ext}"
@@ -111,9 +104,7 @@
     "target": [
       {
         "target": "AppImage",
-        "arch": [
-          "x64"
-        ]
+        "arch": ["x64"]
       }
     ],
     "category": "Development",

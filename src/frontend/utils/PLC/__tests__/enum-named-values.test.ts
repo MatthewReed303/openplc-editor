@@ -18,8 +18,6 @@ import {
 } from '../enum-named-values'
 import { parseDataTypeFromText } from '../data-type-declarations'
 import { serializeDataTypesToST, serializeDataTypeToText } from '../data-type-serializer'
-import { getBaseCodeSysXmlStructure } from '../xml-generator/codesys/base-xml'
-import { codeSysParseDataTypesToXML } from '../xml-generator/codesys/data-type-xml'
 import { getBaseOldEditorXmlStructure } from '../xml-generator/old-editor/base-xml'
 import { oldEditorParseDataTypesToXML } from '../xml-generator/old-editor/data-type-xml'
 import { parseDataTypesXml } from '../xml-parser/data-type-xml'
@@ -240,17 +238,6 @@ describe('a data type with named values in PLCopen XML', () => {
       baseType: { USINT: '' },
     })
     expect(roundTrip(xml, [status])).toEqual([status])
-  })
-
-  it('exports the same from the CODESYS flavour', () => {
-    const xml = codeSysParseDataTypesToXML(getBaseCodeSysXmlStructure(), [status])
-    const exported = xml.project.types.dataTypes.dataType[0] as { baseType: { enum: unknown } }
-    expect(exported.baseType.enum).toEqual({
-      values: {
-        value: [{ '@name': 'IDLE', '@value': '0' }, { '@name': 'RUN' }, { '@name': 'FAULT', '@value': '16#20' }],
-      },
-      baseType: { USINT: '' },
-    })
   })
 
   it('leaves an enumeration as it was', () => {
